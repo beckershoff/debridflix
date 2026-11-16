@@ -30,7 +30,7 @@ DEFAULTS = {
     # subtitles
     "os_api_key": "", "os_username": "", "os_password": "",
     "subtitle_languages": "de,en",   # first language that has subtitles wins
-    "subtitle_auto": False,
+    "subtitle_auto": True,          # embedded German, else online German, else English
     # filters (remembered between sessions)
     "filter_cached_only": True,
     # what this box + TV can play (core/device.py); auto = highest mode the TV reports over HDMI
@@ -81,9 +81,11 @@ SETUP_FIELDS = [
 ]
 
 
-# Values that used to be the default and were written to every settings file. On load they are
-# dropped again so the current default applies (only values the user really chose are kept).
-LEGACY_DEFAULTS = {"subtitle_languages": "nl,en", "tmdb_language": "en-US"}
+# Settings files without "version" come from releases that wrote every value, defaults included.
+# For those, values equal to an old default are dropped once so the current default applies.
+# Files with a version contain only what the user changed, so nothing is dropped from them.
+VERSION = 2
+LEGACY_DEFAULTS = {"subtitle_languages": "nl,en", "tmdb_language": "en-US", "subtitle_auto": False}
 
 # How choice values are shown (translated with _() where they are displayed)
 CHOICE_LABELS = {"auto": "auto", "any": "any", "en": "English", "de": "Deutsch", "orion": "Orion", "torrentio": "Torrentio",
@@ -101,9 +103,11 @@ class Settings(object):
             with open(self.path, "r") as fh:
                 stored = json.load(fh)
             if isinstance(stored, dict):
-                for key, old in LEGACY_DEFAULTS.items():
-                    if stored.get(key) == old:
-                        del stored[key]
+                if not stored.get("version"):
+                    for key, old in LEGACY_DEFAULTS.items():
+                        if key in stored and stored[key] == old:
+                            del stored[key]
+                stored.pop("version", None)
                 self.data.update(stored)
         except (IOError, OSError, ValueError):
             pass
@@ -112,7 +116,9 @@ class Settings(object):
         tmp = self.path + ".tmp"
         with open(tmp, "w") as fh:
             # only what differs from the defaults, so improved defaults reach existing installs
-            json.dump(dict((k, v) for k, v in self.data.items() if k not in DEFAULTS or DEFAULTS[k] != v), fh, indent=2, sort_keys=True)
+            changed = dict((k, v) for k, v in self.data.items() if k not in DEFAULTS or DEFAULTS[k] != v)
+            changed["version"] = VERSION
+            json.dump(changed, fh, indent=2, sort_keys=True)
         try:
             os.chmod(tmp, 0o600)
         except OSError:

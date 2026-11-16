@@ -88,7 +88,7 @@ which follows the box's own menu language. TMDB titles, descriptions and posters
   are recognised; untagged releases count as English. When a file has several audio tracks, the
   player switches to the first preferred language automatically.
 - **Subtitles** (*Subtitle languages*, default `de,en`): German first, English if there is no German.
-  Turn on *Load best subtitle automatically* to have them appear by themselves.
+  They appear by themselves (*Load best subtitle automatically*, on by default).
 
 Other languages can be added as another dictionary next to `core/i18n_de.py`.
 
@@ -107,7 +107,7 @@ BLUE in the player opens the subtitle menu. It offers, in this order:
      always there (English nearly always is).
 
 Online subtitles can be shifted by 0.5 s steps if they are out of sync. With *Load best subtitle
-automatically* on, the player takes the best language available: an embedded German track first,
+automatically* on (the default), the player takes the best language available: an embedded German track first,
 then an online German subtitle, then English.
 
 ## Remote control

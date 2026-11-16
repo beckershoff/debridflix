@@ -329,13 +329,17 @@ class CoreTest(unittest.TestCase):
         from DebridFlix.core.settings import Settings, DEFAULTS
         path = os.path.join(self.tmp, "legacy.json")
         with open(path, "w") as fh:  # what older versions wrote: every value, incl. the old defaults
-            _json.dump(dict(DEFAULTS, subtitle_languages="nl,en", tmdb_language="en-US", tmdb_key="k"), fh)
+            _json.dump(dict(DEFAULTS, subtitle_languages="nl,en", tmdb_language="en-US", subtitle_auto=False, tmdb_key="k"), fh)
         st = Settings(path)
         self.assertEqual(st.get("subtitle_languages"), "de,en")
         self.assertEqual(st.get("tmdb_language"), "auto")
+        self.assertTrue(st.get("subtitle_auto"))  # old files said False only because it was the default then
         st.set("audio_languages", "de,en")
         stored = _json.load(open(path))
-        self.assertEqual(stored, {"tmdb_key": "k", "audio_languages": "de,en"})
+        self.assertEqual(stored, {"tmdb_key": "k", "audio_languages": "de,en", "version": 2})
+        # after the update a user turns automatic subtitles off: that choice is kept
+        st.set("subtitle_auto", False)
+        self.assertFalse(Settings(path).get("subtitle_auto"))
 
     def test_tmdb_and_cached_browse(self):
         self.s.update({"pm_key": "p"})
