@@ -102,8 +102,10 @@ class StreamsScreen(Screen, Async):
                             _text(15, 1760, s.name, 0xAAAAAA, 1, 46, 30)])
         self["list"].setList(entries)
         cached_total = len([s for s in self.streams if s.cached_on(keys)])
-        self["status"].setText("%s: %d of %d streams shown   |   %d cached on your services%s" % (
+        hidden = sum(self.app.last_hidden.values())
+        self["status"].setText("%s: %d of %d streams shown   |   %d cached on your services%s%s" % (
             self.app.stream_source().name, len(shown), len(self.streams), cached_total,
+            "   |   %d hidden: too much for this box/TV (%s)" % (hidden, ", ".join(sorted(self.app.last_hidden))) if hidden else "",
             "" if providers else "   |   no debrid service configured"))
         self.updateKeys()
 

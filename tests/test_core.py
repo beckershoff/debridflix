@@ -28,7 +28,8 @@ class CoreTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.s = Settings(os.path.join(self.tmp, "cfg.json"))
-        self.s.update({"cache_dir": self.tmp, "tmdb_key": "t", "orion_app_key": "a", "orion_user_key": "u"})
+        self.s.update({"cache_dir": self.tmp, "tmdb_key": "t", "orion_app_key": "a", "orion_user_key": "u",
+                       "hide_unplayable": False})  # device limits have their own tests
         self.fake = Fake(); self._orig = http.request; http.request = self.fake
         self.app = App(self.s)
         self.item = {"kind": "movie", "tmdb": 1, "imdb": "tt0063350", "title": "X"}
@@ -214,6 +215,54 @@ class CoreTest(unittest.TestCase):
         self.s.set("stream_source", "orion")
         self.s.update({"orion_app_key": "", "orion_user_key": ""})
         self.assertTrue(any("Orion" in m for m in self.app.missing_setup()))
+
+    def test_device_detect_from_proc(self):
+        # the user's box: sf8008 (Hi3798MV200) can output 2160p, the Full HD TV reports up to 1080p
+        from DebridFlix.core import device
+        files = {device.PREFERRED: "1080p 1080p50 720p 720p50 1080i 1080i50 480p 576p 1080p24 1080p25 1080p30 480i 576i",
+                 device.CHOICES: "pal ntsc 480i 480p 576i 576p 720p50 720p 1080i50 1080i 1080p50 1080p 2160p25 2160p50 2160p",
+                 device.CHIPSET: "3798mv200"}
+        from unittest import mock
+        with mock.patch.object(device, "_read", lambda p: files.get(p, "")):
+            d = device.detect()
+        self.assertEqual(d, {"max_quality": "hd1080", "av1": False, "dv": False, "chipset": "3798mv200"})
+        files[device.PREFERRED] = "2160p 1080p"
+        with mock.patch.object(device, "_read", lambda p: files.get(p, "")):
+            self.assertEqual(device.detect()["max_quality"], "hd4k")
+        self.assertEqual(device.detect()["max_quality"], "")  # off-box: unknown = no limit
+
+    def test_device_limits_hide_unplayable(self):
+        from DebridFlix.core.device import DeviceLimits
+        self.s.update({"hide_unplayable": True, "max_resolution": "auto", "max_bitrate": "15"})
+        box = {"max_quality": "hd1080", "av1": False, "dv": False}
+        lim = DeviceLimits.from_settings(self.s, box)
+        S = lambda name, q="hd1080", size=4e9, codec="": models.Stream(name=name, quality=q, size=size, video_codec=codec)
+        self.assertEqual(lim.allows(S("Movie.1080p.WEB-DL.x264.mkv"), 120), (True, ""))
+        self.assertEqual(lim.allows(S("Movie.2160p.WEB.mkv", "hd4k"), 120), (False, "resolution"))
+        self.assertEqual(lim.allows(S("Movie.1080p.AV1.mkv", codec="av1"), 120), (False, "AV1"))
+        self.assertEqual(lim.allows(S("Movie.1080p.DV.mkv"), 120), (False, "Dolby Vision"))
+        self.assertEqual(lim.allows(S("Movie.1080p.DV.HDR10.mkv"), 120), (True, ""))  # hybrid: HDR10 fallback
+        self.assertEqual(lim.allows(S("Movie.1080p.DVDRip.mkv"), 120), (True, ""))  # "DVD" is not Dolby Vision
+        self.assertEqual(lim.allows(S("Movie.1080p.Remux.mkv", size=3e10), 120), (False, "bitrate"))  # ~33 Mbit/s
+        self.assertEqual(lim.allows(S("Show.S01E02.1080p.mkv", size=2e9), 45, True), (True, ""))   # ~6 Mbit/s
+        self.assertEqual(lim.allows(S("Show.S01.1080p.Pack", size=5e10), 45, True), (True, ""))  # pack: size not per episode
+        self.s.update({"max_resolution": "hd4k", "max_bitrate": "any"})
+        self.assertEqual(DeviceLimits.from_settings(self.s, box).allows(S("x.2160p", "hd4k", 6e10), 120), (True, ""))
+        self.s.set("hide_unplayable", False)
+        self.assertEqual(DeviceLimits.from_settings(self.s, box).allows(S("x.AV1", "hd8k", 1e12, "av1")), (True, ""))
+
+    def test_find_streams_drops_unplayable_before_balancing(self):
+        self.s.update({"orion_app_key": "", "orion_user_key": "", "rd_token": "r",
+                       "hide_unplayable": True, "max_resolution": "hd1080", "max_bitrate": "15"})
+        self.app._detected = {"max_quality": "hd1080", "av1": False, "dv": False}
+        raw = lambda h, title: {"name": "Torrentio", "title": title, "infoHash": h}
+        self.fake.on("GET", "torrentio.strem.fun", {"streams": [
+            raw(H1, "Movie.2160p.Remux\n\U0001f4be 60 GB"), raw(H2, "Movie.1080p.BluRay.x264\n\U0001f4be 9 GB"),
+            raw(H3, "Movie.1080p.AV1\n\U0001f4be 2 GB"), raw("d" * 40, "Movie.720p.WEB\n\U0001f4be 1.5 GB")]})
+        item = dict(self.item, runtime=120)
+        streams = self.app.find_streams(item)
+        self.assertEqual([s.hash for s in streams], [H2, "d" * 40])
+        self.assertEqual(self.app.last_hidden, {"resolution": 1, "AV1": 1})
 
     def test_tmdb_and_cached_browse(self):
         self.s.update({"pm_key": "p"})

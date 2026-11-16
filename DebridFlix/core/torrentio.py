@@ -98,7 +98,8 @@ class Torrentio(object):
         self.s = settings
         self.log = log or (lambda *a: None)
 
-    def streams(self, kind, imdb=None, season=None, episode=None, limit=None):
+    def streams(self, kind, imdb=None, season=None, episode=None, limit=None, keep=None):
+        """keep: optional predicate applied before the per-resolution balancing (drop unplayable first)."""
         if not imdb:
             raise TorrentioError("No IMDb id for this title")
         imdb = imdb if str(imdb).startswith("tt") else "tt%s" % imdb
@@ -108,5 +109,5 @@ class Torrentio(object):
         except http.ApiError as err:
             raise TorrentioError("Torrentio: %s" % err)
         self.log("torrentio", path, "%d streams" % len((reply or {}).get("streams") or []))
-        out = [s for s in (parse_torrentio_stream(r) for r in (reply or {}).get("streams") or []) if s]
+        out = [s for s in (parse_torrentio_stream(r) for r in (reply or {}).get("streams") or []) if s and (keep is None or keep(s))]
         return balance(out, int(limit or self.s.get("orion_limit") or 50))

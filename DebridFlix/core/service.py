@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from . import http
 from .cache import DiskCache
 from .debrid import NotReady, ProviderError, providers
+from .device import DeviceLimits, detect
 from .models import StreamFilter
 from .orion import Orion
 from .torrentio import Torrentio
@@ -32,6 +33,8 @@ class App(object):
         self.trakt = Trakt(self.s, self.log)
         self.subs = OpenSubtitles(self.s, self.log)
         self.browse_cached_only = False
+        self._detected = None
+        self.last_hidden = {}  # reason -> count, from the last find_streams()
 
     # --- helpers --------------------------------------------------------
     def log(self, *parts):
@@ -65,6 +68,11 @@ class App(object):
         if not self.providers():
             missing.append("at least one debrid service")
         return missing
+
+    def device_limits(self):
+        if self._detected is None:
+            self._detected = detect()
+        return DeviceLimits.from_settings(self.s, self._detected)
 
     def stream_filter(self):
         return StreamFilter(bool(self.s.get("filter_cached_only")), self.s.get("filter_resolution"),
@@ -148,11 +156,22 @@ class App(object):
             imdb = self.tmdb.details(item["kind"], item["tmdb"])[0].get("imdb")
             item["imdb"] = imdb
         source = self.stream_source()
+        limits = self.device_limits()
+        hidden = {}
+
+        def playable(stream):
+            ok, reason = limits.allows(stream, item.get("runtime"), item["kind"] != "movie")
+            if not ok:
+                hidden[reason] = hidden.get(reason, 0) + 1
+            return ok
+
         if source is self.orion:
             streams = self.orion.streams(item["kind"], imdb=imdb, tmdb=None if imdb else item["tmdb"],
                                          season=season, episode=episode, limit=limit)
+            streams = [s for s in streams if playable(s)]
         else:
-            streams = self.torrentio.streams(item["kind"], imdb=imdb, season=season, episode=episode, limit=limit)
+            streams = self.torrentio.streams(item["kind"], imdb=imdb, season=season, episode=episode, limit=limit, keep=playable)
+        self.last_hidden = hidden
         hashes = [s.hash for s in streams if s.hash]
         if source is self.orion and self.s.get("orion_fresh_lookup") and hashes:
             try:

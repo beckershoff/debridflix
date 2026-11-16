@@ -75,6 +75,9 @@ opens the plugin browser; DebridFlix is the first entry.
   optionally refreshed with Orion `mode=debrid action=lookup` ("Orion fresh cache lookup").
 - Without Orion keys (Setup "Stream search" = auto) streams come from the keyless Torrentio API
   (`core/torrentio.py`). Cache state unknown for RD/AD/DL there -> `None` = "Maybe", Play tries them.
+- Device limits (`core/device.py`): max resolution from the TV EDID (`/proc/stb/video/videomode_preferred`), no AV1 /
+  DV-only on HiSilicon, max est. bitrate (default 15 Mbit/s: user box is on Wi-Fi, ~17 measured). Applied in
+  `find_streams` before Torrentio balancing. User box: Hi3798MV200 + Full HD TV.
 - Playback is HTTPS-only from the debrid service (`App.play` refuses anything else): the box never does P2P.
 - GUI may run at 1280x720: skins scale (resolution=), but runtime `move()` does not -> use `ui.common.point()`.
 - Enigma2 exec()s non-bound-method entries in `onLayoutFinish`: never append a lambda there.

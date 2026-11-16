@@ -30,6 +30,10 @@ DEFAULTS = {
     "subtitle_auto": False,
     # filters (remembered between sessions)
     "filter_cached_only": True,
+    # what this box + TV can play (core/device.py); auto = highest mode the TV reports over HDMI
+    "hide_unplayable": True,
+    "max_resolution": "auto",
+    "max_bitrate": "15",  # Mbit/s, estimated from file size and runtime; ~17 measured over this box's Wi-Fi
     "filter_resolution": "any",
     "filter_audio": "any",
     "filter_language": "any",
@@ -49,6 +53,9 @@ SETUP_FIELDS = [
     ("Orion user key", "orion_user_key", "text", None),
     ("Results per search", "orion_limit", "choice", ["20", "50", "100", "200"]),
     ("Orion fresh cache lookup (uses quota)", "orion_fresh_lookup", "bool", None),
+    ("Hide streams this box/TV cannot play well", "hide_unplayable", "bool", None),
+    ("Max resolution (auto = what the TV accepts)", "max_resolution", "choice", ["auto", "hd4k", "hd1080", "hd720", "any"]),
+    ("Max bitrate in Mbit/s (Wi-Fi: 15)", "max_bitrate", "choice", ["8", "15", "25", "40", "60", "any"]),
     ("Premiumize API key", "pm_key", "text", None),
     ("Real-Debrid API token (or link with yellow)", "rd_token", "text", None),
     ("TorBox API key", "tb_key", "text", None),
