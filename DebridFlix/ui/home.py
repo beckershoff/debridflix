@@ -1,5 +1,5 @@
 """Home screen: hero panel on top, two poster rows below (active row + the next one)."""
-from enigma import ePoint, eTimer
+from enigma import eTimer
 
 from Components.ActionMap import ActionMap
 from Components.Label import Label
@@ -7,12 +7,19 @@ from Components.Pixmap import Pixmap
 from Screens.Screen import Screen
 from Screens.VirtualKeyBoard import VirtualKeyBoard
 
-from .common import BG, GREY, PANEL, RED, Async, label, screen, set_pixmap
+from .common import BG, GREY, PANEL, RED, Async, label, point, screen, set_pixmap
 
 COLS = 9
 POSTER_W, POSTER_H = 154, 231
 X0, STEP = 60, 200
 ROW_Y = (450, 770)
+
+
+def clip(text, limit):
+    """Shorten at a word boundary with an ellipsis."""
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",.;:-") + "\u2026"
 
 
 def _skin():
@@ -146,7 +153,7 @@ class HomeScreen(Screen, Async):
         row = self.rows[self.row] if self.row < len(self.rows) else None
         column = (row["sel"] - row["offset"]) if row else 0
         if self["frame"].instance:
-            self["frame"].instance.move(ePoint(X0 - 6 + column * STEP, ROW_Y[0] - 6))
+            self["frame"].instance.move(point(X0 - 6 + column * STEP, ROW_Y[0] - 6))
         item = self.current()
         if item:
             self["frame"].show()
@@ -155,7 +162,7 @@ class HomeScreen(Screen, Async):
             if item.get("rating"):
                 parts.append("Rating %.1f" % float(item["rating"]))
             self["meta"].setText("   |   ".join(p for p in parts if p))
-            self["overview"].setText(item.get("overview") or "")
+            self["overview"].setText(clip(item.get("overview") or "", 380))  # 4 lines; a 5th would be cut in half
         else:
             self["frame"].hide()
             for name in ("title", "meta", "overview"):

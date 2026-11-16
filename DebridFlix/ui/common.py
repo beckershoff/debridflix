@@ -10,6 +10,18 @@ GREY = "#00aaaaaa"
 WHITE = "#00ffffff"
 
 
+def point(x, y):
+    """ePoint for a runtime move(). Skins are scaled from 1920x1080 to the real desktop by Enigma2 (resolution=
+    attribute), but move() takes raw desktop pixels - e.g. 1280x720 on boxes whose GUI runs at 720p."""
+    from enigma import ePoint, getDesktop
+    try:
+        size = getDesktop(0).size()
+        fx, fy = size.width() / 1920.0, size.height() / 1080.0
+    except Exception:
+        fx = fy = 1.0
+    return ePoint(int(round(x * fx)), int(round(y * fy)))
+
+
 class Async(object):
     """Run blocking work in a thread; callbacks fire on the main loop and only while the screen is open."""
 

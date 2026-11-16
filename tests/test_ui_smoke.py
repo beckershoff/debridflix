@@ -57,7 +57,8 @@ class SRef(object):
     def __init__(self, t, f, path): self.type, self.path = t, path
     def setName(self, n): self.name = n
 class MessageBox(object): TYPE_INFO = 1; TYPE_ERROR = 2
-mod("enigma", ePoint=lambda x, y: (x, y), eTimer=lambda: types.SimpleNamespace(callback=[], start=lambda *a: None, stop=lambda: None),
+DESKTOP = types.SimpleNamespace(width=lambda: 1280, height=lambda: 720)  # GUI at 720p, like the real box
+mod("enigma", ePoint=lambda x, y: (x, y), getDesktop=lambda i: types.SimpleNamespace(size=lambda: DESKTOP), eTimer=lambda: types.SimpleNamespace(callback=[], start=lambda *a: None, stop=lambda: None),
     eListboxPythonMultiContent=object(), gFont=lambda *a: a, RT_HALIGN_LEFT=0, RT_HALIGN_RIGHT=1, RT_VALIGN_CENTER=4, eServiceReference=SRef)
 for n in ("twisted", "twisted.internet", "Components", "Screens", "Tools", "Plugins"): mod(n)
 mod("twisted.internet.threads", deferToThread=lambda f, *a: Deferred(f, a)); sys.modules["twisted.internet"].threads = sys.modules["twisted.internet.threads"]
@@ -79,6 +80,10 @@ from DebridFlix.core.service import App
 from tests.test_core import Fake, orion_stream, H1, H2
 
 class UiSmoke(unittest.TestCase):
+    def test_point_scales_to_desktop(self):
+        from DebridFlix.ui.common import point
+        self.assertEqual(point(54, 444), (36, 296))  # 1920x1080 skin coordinates -> 1280x720 desktop pixels
+
     def setUp(self):
         tmp = tempfile.mkdtemp(); s = Settings(os.path.join(tmp, "c.json"))
         s.update({"cache_dir": tmp, "tmdb_key": "t", "orion_app_key": "a", "orion_user_key": "u", "pm_key": "p",
