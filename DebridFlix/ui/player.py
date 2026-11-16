@@ -13,7 +13,7 @@ from .common import Async
 
 
 class SubtitleOverlay(Screen):
-    skin = ('<screen name="DebridFlixSubtitles" position="0,820" size="1920,220" flags="wfNoBorder" backgroundColor="#ff000000" zPosition="9">\n'
+    skin = ('<screen name="DebridFlixSubtitles" position="0,820" size="1920,220" resolution="1920,1080" flags="wfNoBorder" backgroundColor="#ff000000" zPosition="9">\n'
             '<widget name="text" position="60,0" size="1800,220" font="Regular;46" halign="center" valign="bottom" '
             'foregroundColor="#00ffffff" backgroundColor="#ff000000" borderWidth="3" borderColor="#00000000" transparent="1"/>\n'
             '</screen>')

@@ -1,5 +1,5 @@
 """Home screen: hero panel on top, two poster rows below (active row + the next one)."""
-from enigma import ePoint
+from enigma import ePoint, eTimer
 
 from Components.ActionMap import ActionMap
 from Components.Label import Label
@@ -57,6 +57,8 @@ class HomeScreen(Screen, Async):
             "up": self.keyUp, "down": self.keyDown, "red": self.keySearch, "green": self.keyWatchlist,
             "yellow": self.keyCachedOnly, "blue": self.keySetup, "menu": self.keySetup}, -1)
         self["logo"] = Pixmap()
+        self.autoPair = eTimer()
+        self.autoPair.callback.append(self.openPairing)
         self.onLayoutFinish.append(self.start)
 
     # --- rows -----------------------------------------------------------
@@ -66,6 +68,12 @@ class HomeScreen(Screen, Async):
         if not set_pixmap(self["logo"], LOGO):
             self["logo"].hide()
         self.buildRows()
+        if self.app.missing_setup():  # first run: go straight to the QR code instead of an empty home screen
+            self.autoPair.start(200, True)
+
+    def openPairing(self):
+        from .pair import PairScreen
+        self.session.openWithCallback(self.setupClosed, PairScreen, self.app)
 
     def buildRows(self, keep=None):
         self.rows = [self.makeRow(title, loader) for title, loader in self.app.rows()]

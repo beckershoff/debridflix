@@ -6,6 +6,7 @@ from enigma import eTimer
 from Components.ActionMap import ActionMap
 from Components.ConfigList import ConfigListScreen
 from Components.Label import Label
+from Components.Pixmap import Pixmap
 from Components.config import ConfigSelection, ConfigText, ConfigYesNo, getConfigListEntry
 from Screens.ChoiceBox import ChoiceBox
 from Screens.MessageBox import MessageBox
@@ -18,6 +19,8 @@ from .common import BG, GREY, Async, label, screen
 
 def _setup_skin():
     body = label("title", 60, 30, 1800, 60, 44)
+    # the box's text-entry help popup (ConfigListScreen) is moved to the HelpWindow widget's position
+    body += '<widget name="HelpWindow" position="1120,770" size="700,150" zPosition="5"/>\n'
     body += ('<widget name="config" position="60,120" size="1800,800" font="Regular;30" itemHeight="50" backgroundColor="%s" '
              'scrollbarMode="showOnDemand" transparent="1"/>\n') % BG
     for index, (name, color) in enumerate((("red", "#009f1313"), ("green", "#001f771f"), ("yellow", "#00a08500"))):
@@ -47,6 +50,8 @@ class SetupScreen(ConfigListScreen, Screen, Async):
             self.fields.append((key, kind, element))
             entries.append(getConfigListEntry(text, element))
         ConfigListScreen.__init__(self, entries, session=session)
+        if "HelpWindow" not in self:
+            self["HelpWindow"] = Pixmap()
         self["title"] = Label("DebridFlix setup")
         self["hint"] = Label("OK opens the keyboard for text fields. Everything is stored in /etc/enigma2/debridflix.json")
         self["key_red"] = Label("Cancel")

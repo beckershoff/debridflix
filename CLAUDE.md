@@ -7,8 +7,11 @@ stream is not cached. Version 0.2.0. Standard library only - no pip packages on 
 
 ## Status
 
-- Written entirely off-box. **Never run on a real receiver yet.** First job: install, start,
-  read the crash log, fix.
+- Installed and running on a real box (sf8008, MyMetrixLite skin). Home, setup and
+  pairing screens verified by screenshot (2026-11-16); browsing/playback not yet tested (no keys entered).
+- **Every `<screen>` needs `resolution="1920,1080"`**, otherwise OpenATV scales the skin 1.5x as if it were 720p
+  (`common.screen()` and the player overlay set it).
+- First start with setup missing opens the pairing (QR) screen automatically.
 - 16 tests pass: `python3 -m unittest tests.test_core tests.test_ui_smoke`
   - `test_core`: service logic against a fake `http.request`.
   - `test_ui_smoke`: screens against stand-in Enigma2 classes (checks our logic, not Enigma2).
@@ -17,6 +20,11 @@ stream is not cached. Version 0.2.0. Standard library only - no pip packages on 
   (version comes from `DebridFlix/core/__init__.py`).
 
 ## Deploy / debug loop
+
+OpenWebif drives the box remotely: `curl http://BOX/api/remotecontrol?command=N`
+(OK 352, EXIT 174, up 103, down 108, left 105, right 106, RED 398, GREEN 399, YELLOW 400, BLUE 401)
+and `curl -o shot.jpg 'http://BOX/grab?format=jpg&mode=osd'` for a screenshot. From live TV: BLUE -> 7x down -> OK -> OK
+opens the plugin browser; DebridFlix is the first entry.
 
     scp dist/*.ipk root@BOX:/tmp/ && ssh root@BOX 'opkg install --force-reinstall /tmp/enigma2-plugin-extensions-debridflix_*.ipk && init 4 && init 3'
     # faster while iterating:

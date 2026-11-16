@@ -44,7 +44,7 @@ def label(name, x, y, w, h, size, color=WHITE, extra=""):
 
 
 def screen(name, body, title="DebridFlix"):
-    return '<screen name="%s" position="0,0" size="1920,1080" flags="wfNoBorder" backgroundColor="%s" title="%s">\n%s</screen>' % (
+    return '<screen name="%s" position="0,0" size="1920,1080" resolution="1920,1080" flags="wfNoBorder" backgroundColor="%s" title="%s">\n%s</screen>' % (
         name, BG, title, body)
 
 
