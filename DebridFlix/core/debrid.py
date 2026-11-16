@@ -12,6 +12,7 @@ import time
 
 from . import http
 from .models import hash_from_magnet, pick_file
+from .i18n import _
 
 
 class ProviderError(Exception):
@@ -86,7 +87,7 @@ class Premiumize(Provider):
         else:
             reply = self._http("POST", self.BASE + path, data=fields)
         if not isinstance(reply, dict) or reply.get("status") != "success":
-            raise ProviderError("Premiumize: %s" % ((reply or {}).get("message") or "request failed"))
+            raise ProviderError("Premiumize: %s" % ((reply or {}).get("message") or _("request failed")))
         return reply
 
     def check_cached(self, hashes):
@@ -101,14 +102,14 @@ class Premiumize(Provider):
 
     def add(self, magnet):
         self._call("POST", "/transfer/create", src=magnet)
-        return "Transfer created on Premiumize"
+        return _("Transfer created on Premiumize")
 
     def resolve(self, magnet, season=None, episode=None):
         try:
             reply = self._call("POST", "/transfer/directdl", src=magnet)
         except ProviderError:
             self.add(magnet)
-            raise NotReady("Premiumize: not cached, transfer started")
+            raise NotReady(_("Premiumize: not cached, transfer started"))
         files = [{"name": c.get("path") or "", "size": c.get("size") or 0, "link": c.get("link") or c.get("stream_link")}
                  for c in reply.get("content") or []]
         return self._pick(files, season, episode)["link"]
@@ -183,14 +184,14 @@ class RealDebrid(Provider):
         return info, chosen
 
     def add(self, magnet):
-        info, _ = self._add_and_select(magnet, None, None, True)
-        return "Added to Real-Debrid (%s)" % (info.get("status") or "queued")
+        info, _files = self._add_and_select(magnet, None, None, True)
+        return _("Added to Real-Debrid (%s)") % (info.get("status") or "queued")
 
     def resolve(self, magnet, season=None, episode=None):
         info, chosen = self._add_and_select(magnet, season, episode, False)
         links = info.get("links") or []
         if info.get("status") != "downloaded" or not links:
-            raise NotReady("Real-Debrid: not cached, download started (%s, %s%%)" % (info.get("status") or "queued", info.get("progress") or 0))
+            raise NotReady(_("Real-Debrid: not cached, download started (%s, %s%%)") % (info.get("status") or "queued", info.get("progress") or 0))
         link = links[0]
         selected = [f for f in info.get("files") or [] if f.get("selected")]
         if len(links) > 1 and len(links) == len(selected):
@@ -216,7 +217,7 @@ class TorBox(Provider):
 
     def _data(self, reply):
         if not isinstance(reply, dict) or reply.get("success") is False:
-            raise ProviderError("TorBox: %s" % ((reply or {}).get("detail") or "request failed"))
+            raise ProviderError("TorBox: %s" % ((reply or {}).get("detail") or _("request failed")))
         return reply.get("data")
 
     def check_cached(self, hashes):
@@ -241,24 +242,24 @@ class TorBox(Provider):
 
     def add(self, magnet):
         self._create(magnet)
-        return "Added to TorBox"
+        return _("Added to TorBox")
 
     def resolve(self, magnet, season=None, episode=None):
         torrent_id = self._create(magnet)
         if not torrent_id:
-            raise NotReady("TorBox: torrent queued")
+            raise NotReady(_("TorBox: torrent queued"))
         info = self._data(self._http("GET", self.BASE + "/torrents/mylist", headers=self._headers(),
                                      params={"id": torrent_id, "bypass_cache": "true"})) or {}
         if isinstance(info, list):
             info = info[0] if info else {}
         if not (info.get("download_finished") or info.get("download_present")) or not info.get("files"):
-            raise NotReady("TorBox: not cached, download started (%d%%)" % int(float(info.get("progress") or 0) * 100))
+            raise NotReady(_("TorBox: not cached, download started (%d%%)") % int(float(info.get("progress") or 0) * 100))
         files = [{"name": f.get("name") or f.get("short_name") or "", "size": f.get("size") or 0, "id": f.get("id")} for f in info["files"]]
         chosen = self._pick(files, season, episode)
         url = self._data(self._http("GET", self.BASE + "/torrents/requestdl", headers=self._headers(),
                                     params={"token": self.s.get("tb_key"), "torrent_id": torrent_id, "file_id": chosen["id"]}))
         if not url:
-            raise ProviderError("TorBox: no download link returned")
+            raise ProviderError(_("TorBox: no download link returned"))
         return url
 
     def account(self):
@@ -283,7 +284,7 @@ class AllDebrid(Provider):
             reply = self._http("POST", self.BASE + path, params={"agent": self.AGENT}, data=fields, headers=headers)
         if not isinstance(reply, dict) or reply.get("status") != "success":
             error = (reply or {}).get("error") or {}
-            raise ProviderError("AllDebrid: %s" % (error.get("message") or error.get("code") or "request failed"))
+            raise ProviderError("AllDebrid: %s" % (error.get("message") or error.get("code") or _("request failed")))
         return reply.get("data") or {}
 
     def auth_start(self):
@@ -302,17 +303,17 @@ class AllDebrid(Provider):
         data = self._call("POST", "/magnet/upload", **{"magnets[]": [magnet]})
         entry = (data.get("magnets") or [{}])[0]
         if entry.get("error"):
-            raise ProviderError("AllDebrid: %s" % (entry["error"].get("message") or "magnet rejected"))
+            raise ProviderError("AllDebrid: %s" % (entry["error"].get("message") or _("magnet rejected")))
         return entry
 
     def add(self, magnet):
         self._upload(magnet)
-        return "Added to AllDebrid"
+        return _("Added to AllDebrid")
 
     def resolve(self, magnet, season=None, episode=None):
         entry = self._upload(magnet)
         if not entry.get("ready"):
-            raise NotReady("AllDebrid: not cached, download started")
+            raise NotReady(_("AllDebrid: not cached, download started"))
         data = self._call("POST", "/magnet/files", **{"id[]": [entry["id"]]})
         node = (data.get("magnets") or [{}])[0]
         files = _flatten_alldebrid(node.get("files") or node.get("links"))
@@ -334,7 +335,7 @@ class DebridLink(Provider):
     def _call(self, method, path, **kw):
         reply = self._http(method, self.BASE + path, headers={"Authorization": "Bearer %s" % self.s.get("dl_key")}, **kw)
         if not isinstance(reply, dict) or not reply.get("success"):
-            raise ProviderError("Debrid-Link: %s" % ((reply or {}).get("error") or "request failed"))
+            raise ProviderError("Debrid-Link: %s" % ((reply or {}).get("error") or _("request failed")))
         return reply.get("value")
 
     def _add(self, magnet):
@@ -342,17 +343,17 @@ class DebridLink(Provider):
 
     def add(self, magnet):
         self._add(magnet)
-        return "Added to Debrid-Link"
+        return _("Added to Debrid-Link")
 
     def resolve(self, magnet, season=None, episode=None):
         torrent = self._add(magnet)
         files = [{"name": f.get("name") or "", "size": f.get("size") or 0, "link": f.get("downloadUrl"),
                   "done": float(f.get("downloadPercent") or 0) >= 100} for f in torrent.get("files") or []]
         if not files:
-            raise NotReady("Debrid-Link: torrent queued")
+            raise NotReady(_("Debrid-Link: torrent queued"))
         chosen = self._pick(files, season, episode)
         if not chosen["done"] or not chosen["link"]:
-            raise NotReady("Debrid-Link: not cached, download started (%s%%)" % int(float(torrent.get("downloadPercent") or 0)))
+            raise NotReady(_("Debrid-Link: not cached, download started (%s%%)") % int(float(torrent.get("downloadPercent") or 0)))
         return chosen["link"]
 
     def account(self):

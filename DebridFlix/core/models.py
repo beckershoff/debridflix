@@ -115,6 +115,9 @@ def parse_orion_stream(raw):
     languages = audio.get("languages") or []
     if isinstance(languages, str):
         languages = [languages]
+    from .i18n import name_languages
+    languages = [str(l).lower() for l in languages]
+    languages += [l for l in name_languages(info.get("name") or "") if l not in languages]
     try:
         channels = int(audio.get("channels") or 0)
     except (TypeError, ValueError):
@@ -128,8 +131,9 @@ def parse_orion_stream(raw):
 
 
 class StreamFilter(object):
-    def __init__(self, cached_only=True, resolution="any", audio="any", language="any"):
+    def __init__(self, cached_only=True, resolution="any", audio="any", language="any", audio_preference=None):
         self.cached_only = cached_only
+        self.audio_preference = list(audio_preference or [])
         self.resolution = resolution
         self.audio = audio
         self.language = language
@@ -147,9 +151,12 @@ class StreamFilter(object):
 
     def apply(self, streams, provider_keys):
         result = [s for s in streams if self.match(s, provider_keys)]
-        # cached anywhere first, then "maybe" (unknown cache state), then the rest; within a tier best quality first
-        result.sort(key=lambda s: (2 if s.cached_on(provider_keys) else 1 if s.maybe_on(provider_keys) else 0, s.rank,
-                                   float(s.seeds or 0) > 0, float(s.size or 0)), reverse=True)
+        # cached anywhere first, then "maybe" (unknown cache state), then the rest; within a tier the preferred audio
+        # language (e.g. English, then German), then best quality
+        from .i18n import audio_score
+        result.sort(key=lambda s: (2 if s.cached_on(provider_keys) else 1 if s.maybe_on(provider_keys) else 0,
+                                   -audio_score(s.languages, self.audio_preference) if self.audio_preference else 0,
+                                   s.rank, float(s.seeds or 0) > 0, float(s.size or 0)), reverse=True)
         return result
 
 

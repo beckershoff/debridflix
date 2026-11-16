@@ -4,6 +4,7 @@ import os
 import re
 
 from . import http
+from .i18n import _
 
 BASE = "https://api.opensubtitles.com/api/v1"
 AGENT = "DebridFlix v0.1.0"
@@ -39,10 +40,10 @@ class OpenSubtitles(object):
     def search(self, imdb, season=None, episode=None, languages=None):
         """Returns [{'file_id', 'language', 'release', 'downloads'}], best first."""
         if not self.configured():
-            raise SubtitleError("OpenSubtitles API key is not set")
+            raise SubtitleError(_("OpenSubtitles API key is not set"))
         number = str(imdb or "").replace("tt", "").lstrip("0")
         if not number:
-            raise SubtitleError("No IMDb id for this title")
+            raise SubtitleError(_("No IMDb id for this title"))
         params = {"languages": ",".join(sorted(languages or self.s.list("subtitle_languages"))), "order_by": "download_count"}
         if season is not None and episode is not None:
             params.update({"parent_imdb_id": number, "season_number": season, "episode_number": episode})
@@ -69,7 +70,7 @@ class OpenSubtitles(object):
         try:
             reply = http.request("POST", BASE + "/download", headers=self._headers(login=True), json_body={"file_id": file_id, "sub_format": "srt"})
             if not reply or not reply.get("link"):
-                raise SubtitleError("OpenSubtitles: %s" % ((reply or {}).get("message") or "no download link"))
+                raise SubtitleError("OpenSubtitles: %s" % ((reply or {}).get("message") or _("no download link")))
             content = http.request("GET", reply["link"], raw=True, headers={"User-Agent": AGENT})
         except http.ApiError as err:
             message = (err.payload or {}).get("message") if isinstance(err.payload, dict) else None

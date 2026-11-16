@@ -13,6 +13,8 @@ on its servers and the box streams the finished file over HTTPS.
 - **Subtitles:** OpenSubtitles.com, rendered by the plugin itself (no extra plugin needed)
 - **Phone setup:** scan a QR code on the TV and paste your keys on your phone
 - **Fits your hardware:** hides streams your TV, chip or network can't play well
+- **English and German:** the interface follows the box's menu language (or choose it in Setup);
+  English audio preferred with German second, subtitles in German with English as fallback
 
 Use it only for content you are allowed to stream. Rules differ per country: in the EU, streaming
 or downloading from unlicensed sources is generally unlawful even if you don't upload.
@@ -74,6 +76,23 @@ or write `/etc/enigma2/debridflix.json` over SSH:
 Trakt apps created since October 2026 get only a Client ID and no secret; that is all DebridFlix
 needs. Older apps can still fill in `trakt_client_secret`.
 
+## Languages
+
+Everything DebridFlix shows, including the phone setup page and the plugin's entry in the plugin
+list, is available in **English and German**. *Language / Sprache* in Setup is `auto` by default,
+which follows the box's own menu language. TMDB titles, descriptions and posters follow it too
+(*Metadata language*).
+
+- **Audio** (*Preferred audio languages*, default `en,de`): streams are sorted so English releases
+  come first and German second. Release tags such as `GERMAN`, `DL` (German + English) and `ENG`
+  are recognised; untagged releases count as English. When a file has several audio tracks, the
+  player switches to the first preferred language automatically.
+- **Subtitles** (*Subtitle languages*, default `de,en`): BLUE in the player searches
+  OpenSubtitles and lists German first, English if there is no German. Turn on *Load best subtitle
+  automatically* to have them appear by themselves.
+
+Other languages can be added as another dictionary next to `core/i18n_de.py`.
+
 ## Remote control
 
 | Screen | Keys |
@@ -131,6 +150,7 @@ DebridFlix/
     models.py      Stream model, Orion parser, filters, episode file picking
     orion.py torrentio.py debrid.py tmdb.py trakt.py subtitles.py
     device.py      what the box + TV can play (reads /proc/stb)
+    i18n.py i18n_de.py   interface language, German texts, audio/subtitle language helpers
     service.py     App facade used by the screens
     qr.py pairing.py   QR encoder and the phone pairing web page
   ui/            Enigma2 screens (skins are generated in each file)
@@ -159,6 +179,8 @@ Some notes for Enigma2 work, learned the hard way:
 - Every `<screen>` needs `resolution="1920,1080"`, or OpenATV scales the skin as if it were 720p.
 - Runtime `instance.move()` takes raw desktop pixels; use `ui.common.point()` to convert.
 - Enigma2 `exec()`s anything in `onLayoutFinish` that isn't a bound method: no lambdas there.
+- MultiContent list entries, `setFont()` and `setItemHeight()` are raw pixels too: use `ui.common.scale()`.
+- Wrap every user-visible string in `_()`; a test fails when a German translation is missing.
 
 ## Status
 

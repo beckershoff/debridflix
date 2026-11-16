@@ -264,6 +264,79 @@ class CoreTest(unittest.TestCase):
         self.assertEqual([s.hash for s in streams], [H2, "d" * 40])
         self.assertEqual(self.app.last_hidden, {"resolution": 1, "AV1": 1})
 
+    def test_german_translation_complete(self):
+        # every _("...") literal, setup label, choice label and hint has a German text with the same placeholders
+        import ast, glob, re
+        from DebridFlix.core.i18n_de import DE
+        from DebridFlix.core.settings import SETUP_FIELDS, CHOICE_LABELS
+        from DebridFlix.core.pairing import HELP
+        root = os.path.join(os.path.dirname(__file__), "..", "DebridFlix")
+        wanted = set()
+        for path in glob.glob(os.path.join(root, "**", "*.py"), recursive=True):
+            for n in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_" and n.args:
+                    if isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str):
+                        wanted.add(n.args[0].value)
+        wanted |= set(f[0] for f in SETUP_FIELDS) | set(CHOICE_LABELS.values())
+        wanted |= set(h for h in HELP.values() if not re.match(r"^[a-z.-]+\.(org|com|me|app)\b", h))
+        wanted |= {"resolution", "AV1", "Dolby Vision", "bitrate"}
+        self.assertEqual(sorted(w for w in wanted if w not in DE), [])
+        spec = re.compile(r"%[-#0 +]*\d*(?:\.\d+)?[sdif%]")
+        for en, de in DE.items():
+            self.assertEqual(spec.findall(en), spec.findall(de), en)
+        self.assertEqual(sorted(k for k in DE if k not in wanted), [])  # no stale entries
+
+    def test_language_switch_and_helpers(self):
+        from DebridFlix.core import i18n
+        self.assertEqual(i18n.resolve("auto", "de_DE"), "de")
+        self.assertEqual(i18n.resolve("auto", "nl_NL"), "en")
+        self.assertEqual(i18n.resolve("en", "de_DE"), "en")
+        self.s.set("ui_language", "auto")
+        try:
+            self.assertEqual(self.app.apply_language("de_DE"), "de")
+            self.assertEqual(i18n._("Trending movies"), "Filme im Trend")
+            self.assertEqual(i18n.tmdb_locale("auto"), "de-DE")
+            self.assertEqual(i18n.tmdb_locale("en-US"), "en-US")
+            self.assertEqual(self.app.rows()[0][0], "Filme im Trend")
+            self.fake.on("GET", "themoviedb.org", {"results": []})
+            self.app.tmdb.trending("movie")
+            self.assertEqual(self.fake.calls[-1][2]["language"], "de-DE")
+        finally:
+            i18n.set_language("en")
+        self.assertEqual(i18n._("Trending movies"), "Trending movies")
+
+    def test_audio_languages_and_tracks(self):
+        from DebridFlix.core.i18n import name_languages, audio_score, pick_track, lang_code
+        self.assertEqual(name_languages("Movie.2020.German.DL.1080p.BluRay.x264"), ["de", "en"])
+        self.assertEqual(name_languages("Movie.2020.GERMAN.1080p.WEB"), ["de"])
+        self.assertEqual(name_languages("Movie.2020.1080p.WEB-DL.DDP5.1"), [])  # "WEB-DL" is not dual language
+        self.assertEqual(name_languages("Movie 2020 ENG 1080p"), ["en"])
+        self.assertEqual([lang_code(x) for x in ("eng", "ger", "deu", "English", "Deutsch", "en-US", "und")], ["en", "de", "de", "en", "de", "en", ""])
+        self.assertEqual(audio_score([], ["en", "de"]), 0)        # untagged = English
+        self.assertEqual(audio_score(["de"], ["en", "de"]), 1)
+        self.assertEqual(audio_score(["fr"], ["en", "de"]), 2)
+        self.assertEqual(pick_track(["deu", "eng"], ["en", "de"]), 1)
+        self.assertEqual(pick_track(["ger", "fra"], ["en", "de"]), 0)
+        self.assertIsNone(pick_track(["fra", "ita"], ["en", "de"]))
+        # sorting: same tier -> English before German before others, even at lower quality
+        mk = lambda h, q, langs: models.Stream(hash=h, quality=q, languages=langs, cached={"realdebrid": True})
+        streams = [mk("g", "hd1080", ["de"]), mk("e", "hd720", []), mk("f", "hd1080", ["fr"]), mk("d", "hd720", ["de", "en"])]
+        order = models.StreamFilter(True, "any", "any", "any", ["en", "de"]).apply(streams, ["realdebrid"])
+        self.assertEqual([s.hash for s in order], ["e", "d", "g", "f"])  # e/d both have English (tie keeps order), then German
+
+    def test_settings_save_only_changes_and_drop_legacy_defaults(self):
+        import json as _json
+        from DebridFlix.core.settings import Settings, DEFAULTS
+        path = os.path.join(self.tmp, "legacy.json")
+        with open(path, "w") as fh:  # what older versions wrote: every value, incl. the old defaults
+            _json.dump(dict(DEFAULTS, subtitle_languages="nl,en", tmdb_language="en-US", tmdb_key="k"), fh)
+        st = Settings(path)
+        self.assertEqual(st.get("subtitle_languages"), "de,en")
+        self.assertEqual(st.get("tmdb_language"), "auto")
+        st.set("audio_languages", "de,en")
+        stored = _json.load(open(path))
+        self.assertEqual(stored, {"tmdb_key": "k", "audio_languages": "de,en"})
+
     def test_tmdb_and_cached_browse(self):
         self.s.update({"pm_key": "p"})
         self.fake.on("GET", "/trending/movie/week", {"results": [{"id": 1, "title": "One", "release_date": "2020-01-01", "poster_path": "/a.jpg"},

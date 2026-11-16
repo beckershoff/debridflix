@@ -8,8 +8,10 @@ from Screens.ChoiceBox import ChoiceBox
 from Screens.InfoBar import MoviePlayer
 from Screens.Screen import Screen
 
+from ..core.i18n import pick_track
 from ..core.subtitles import SubtitleTrack
 from .common import Async
+from ..core.i18n import _
 
 
 class SubtitleOverlay(Screen):
@@ -35,6 +37,10 @@ class DebridFlixPlayer(MoviePlayer, Async):
         self.subTimer = eTimer()
         self.subTimer.callback.append(self.subtitleTick)
         self["debridflixActions"] = ActionMap(["ColorActions"], {"blue": self.subtitleMenu}, -2)
+        self.audioTries = 0
+        self.audioTimer = eTimer()
+        self.audioTimer.callback.append(self.chooseAudio)
+        self.audioTimer.start(1000)
         self.onClose.append(self.cleanup)
         if app.s.get("subtitle_auto") and app.subs.configured():
             self.searchSubtitles(auto=True)
@@ -68,16 +74,39 @@ class DebridFlixPlayer(MoviePlayer, Async):
         pass
 
     def cleanup(self):
+        self.audioTimer.stop()
         self.subTimer.stop()
         self.overlay.hide()
         self.session.deleteDialog(self.overlay)
 
+    # --- audio ----------------------------------------------------------
+    def chooseAudio(self):
+        """Switch to the preferred audio language (e.g. English, else German) once the tracks are known."""
+        self.audioTries += 1
+        service = self.session.nav.getCurrentService()
+        audio = service and service.audioTracks()
+        count = audio.getNumberOfTracks() if audio else 0
+        if count == 0:
+            if self.audioTries >= 15:
+                self.audioTimer.stop()
+            return
+        self.audioTimer.stop()
+        if count < 2:
+            return
+        languages = []
+        for index in range(count):
+            info = audio.getTrackInfo(index)
+            languages.append((info.getLanguage() or info.getDescription() or "") if info else "")
+        index = pick_track(languages, self.app.s.list("audio_languages"))
+        if index is not None and index != audio.getCurrentTrack():
+            audio.selectTrack(index)
+
     # --- subtitles ------------------------------------------------------
     def subtitleMenu(self):
-        choices = [("Search subtitles (%s)" % self.app.s.get("subtitle_languages"), "search")]
+        choices = [(_("Search subtitles (%s)") % self.app.s.get("subtitle_languages"), "search")]
         if self.track:
-            choices += [("Subtitles off", "off"), ("Show subtitles 0.5 s later", "later"), ("Show subtitles 0.5 s earlier", "earlier")]
-        self.session.openWithCallback(self.subtitleMenuChosen, ChoiceBox, title="Subtitles", list=choices)
+            choices += [(_("Subtitles off"), "off"), (_("Show subtitles 0.5 s later"), "later"), (_("Show subtitles 0.5 s earlier"), "earlier")]
+        self.session.openWithCallback(self.subtitleMenuChosen, ChoiceBox, title=_("Subtitles"), list=choices)
 
     def subtitleMenuChosen(self, choice):
         if not choice:
@@ -101,12 +130,12 @@ class DebridFlixPlayer(MoviePlayer, Async):
         def found(results):
             if not results:
                 if not auto:
-                    self.showInfo("No subtitles found.")
+                    self.showInfo(_("No subtitles found."))
             elif auto:
                 self.loadSubtitle(results[0])
             else:
-                choices = [("%s   %s   (%s downloads)" % (r["language"].upper(), r["release"][:70], r["downloads"]), r) for r in results[:40]]
-                self.session.openWithCallback(lambda c: c and self.loadSubtitle(c[1]), ChoiceBox, title="Choose a subtitle", list=choices)
+                choices = [(_("%s   %s   (%s downloads)") % (r["language"].upper(), r["release"][:70], r["downloads"]), r) for r in results[:40]]
+                self.session.openWithCallback(lambda c: c and self.loadSubtitle(c[1]), ChoiceBox, title=_("Choose a subtitle"), list=choices)
 
         self.bg(search, found, (lambda e: None) if auto else None)
 

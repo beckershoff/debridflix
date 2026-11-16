@@ -10,16 +10,40 @@ GREY = "#00aaaaaa"
 WHITE = "#00ffffff"
 
 
-def point(x, y):
-    """ePoint for a runtime move(). Skins are scaled from 1920x1080 to the real desktop by Enigma2 (resolution=
-    attribute), but move() takes raw desktop pixels - e.g. 1280x720 on boxes whose GUI runs at 720p."""
-    from enigma import ePoint, getDesktop
+def _factors():
     try:
+        from enigma import getDesktop
         size = getDesktop(0).size()
-        fx, fy = size.width() / 1920.0, size.height() / 1080.0
+        return size.width() / 1920.0, size.height() / 1080.0
     except Exception:
-        fx = fy = 1.0
-    return ePoint(int(round(x * fx)), int(round(y * fy)))
+        return 1.0, 1.0
+
+
+def scale(value, axis=1):
+    """1920x1080 skin units -> raw desktop pixels (axis 0 = x, 1 = y/sizes/fonts).
+    Skins are scaled by Enigma2 (resolution= attribute), but runtime move(), MultiContent entries,
+    setFont() and setItemHeight() take raw pixels - e.g. 1280x720 on boxes whose GUI runs at 720p."""
+    return int(round(value * _factors()[axis]))
+
+
+def point(x, y):
+    """ePoint for a runtime move(), see scale()."""
+    from enigma import ePoint
+    return ePoint(scale(x, 0), scale(y, 1))
+
+
+def enigma_locale():
+    """Enigma2's menu language, e.g. 'de_DE' ('' when it cannot be read)."""
+    try:
+        from Components.config import config
+        return config.osd.language.value
+    except Exception:
+        pass
+    try:
+        from Components.Language import language
+        return language.getLanguage()
+    except Exception:
+        return ""
 
 
 class Async(object):

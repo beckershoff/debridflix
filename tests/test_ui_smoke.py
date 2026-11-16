@@ -83,6 +83,8 @@ class UiSmoke(unittest.TestCase):
     def test_point_scales_to_desktop(self):
         from DebridFlix.ui.common import point
         self.assertEqual(point(54, 444), (36, 296))  # 1920x1080 skin coordinates -> 1280x720 desktop pixels
+        from DebridFlix.ui.common import scale
+        self.assertEqual((scale(1460, 0), scale(80), scale(30)), (973, 53, 20))  # list columns, row height, font
 
     def setUp(self):
         tmp = tempfile.mkdtemp(); s = Settings(os.path.join(tmp, "c.json"))
@@ -160,11 +162,48 @@ class UiSmoke(unittest.TestCase):
         streams["actions"]["cancel"](); detail["actions"]["cancel"](); detail["actions"]["cancel"]()
         self.assertIs(self.session.stack[-1], home)
 
+    def test_german_screens_and_audio_track(self):
+        from DebridFlix.core import i18n
+        from DebridFlix.ui.home import HomeScreen
+        from DebridFlix.ui.setup import SetupScreen
+        self.app.s.set("ui_language", "auto")
+        self.app.apply_language("de_DE")
+        try:
+            home = self.session.open(HomeScreen, self.app)
+            self.assertEqual([r["title"] for r in home.rows][:3], ["Meine Watchlist - Filme", "Meine Watchlist - Serien", "Filme im Trend"])
+            self.assertTrue(home.rows[0]["watchlist"])  # flag still set although the title is German
+            self.assertEqual(home.rows[-1]["title"], "Filme - Action")
+            self.assertIn("ROT Suche", home["hint"].text)
+            self.session.answers = [lambda k: "movie"]; home["actions"]["red"]()
+            self.assertEqual(home.rows[0]["title"], "Suche: movie"); self.assertTrue(home.rows[0]["search"])
+            setup = self.session.open(SetupScreen, self.app)
+            self.assertEqual(setup["key_green"].text, "Speichern")
+            home.row = [r["title"] for r in home.rows].index("Serien im Trend"); home.refresh()
+            home["actions"]["ok"](); detail = self.session.stack[-1]
+            self.assertEqual([e[0] for e in detail["list"].list][-1], "Zur Trakt-Watchlist hinzufügen")
+            detail["actions"]["ok"](); detail["list"].index = 1; detail["actions"]["ok"]()
+            streams = self.session.stack[-1]
+            self.assertIn("Nur im Cache: AN", streams["key_red"].text)
+            self.assertIn("Streams angezeigt", streams["status"].text)
+            streams["actions"]["ok"](); player = self.session.stack[-1]
+            # audio: tracks German, English -> English (index 1) is selected
+            tracks = [types.SimpleNamespace(getLanguage=lambda: "deu", getDescription=lambda: "AC3"),
+                      types.SimpleNamespace(getLanguage=lambda: "eng", getDescription=lambda: "AC3")]
+            chosen = []
+            audio = types.SimpleNamespace(getNumberOfTracks=lambda: 2, getTrackInfo=lambda i: tracks[i],
+                                          getCurrentTrack=lambda: 0, selectTrack=chosen.append)
+            self.session.nav = types.SimpleNamespace(getCurrentService=lambda: types.SimpleNamespace(audioTracks=lambda: audio))
+            player.chooseAudio()
+            self.assertEqual(chosen, [1])
+        finally:
+            i18n.set_language("en")
+
     def test_setup(self):
         from DebridFlix.ui.setup import SetupScreen, DeviceAuthScreen
+        from DebridFlix.core.settings import SETUP_FIELDS
         setup = self.session.open(SetupScreen, self.app)
         field = dict((k, e) for k, _kind, e in setup.fields)
-        self.session.answers = [lambda k: " newkey "]; setup["config"].index = 0; setup["debridflixSetupActions"]["ok"]()
+        self.session.answers = [lambda k: " newkey "]; setup["config"].index = [k for _t, k, _kd, _c in SETUP_FIELDS].index("tmdb_key"); setup["debridflixSetupActions"]["ok"]()
         self.assertEqual(field["tmdb_key"].value, " newkey ")
         self.fake.on("GET", "/device/code", {"device_code": "D", "user_code": "ABCD", "interval": 5, "expires_in": 600, "verification_url": "https://real-debrid.com/device"})
         self.fake.on("GET", "/device/credentials", {"client_id": "cid", "client_secret": "sec"})

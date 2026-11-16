@@ -11,7 +11,8 @@ from Screens.Screen import Screen
 from ..core.debrid import NotReady
 from ..core.models import AUDIO_CHOICES, QUALITY_LABEL, RESOLUTION_CHOICES, channels_label, human_size
 from ..core.service import NotCached
-from .common import BG, GREY, Async, label, screen
+from .common import BG, GREY, Async, label, scale, screen
+from ..core.i18n import _
 
 KEY_COLORS = (("red", "#009f1313"), ("green", "#001f771f"), ("yellow", "#00a08500"), ("blue", "#0018188b"))
 
@@ -31,13 +32,15 @@ def _skin():
 class StreamList(MenuList):
     def __init__(self):
         MenuList.__init__(self, [], enableWrapAround=True, content=eListboxPythonMultiContent)
-        self.l.setFont(0, gFont("Regular", 30))
-        self.l.setFont(1, gFont("Regular", 23))
-        self.l.setItemHeight(80)
+        # raw desktop pixels here (not skin-scaled): convert from 1920x1080 units
+        self.l.setFont(0, gFont("Regular", scale(30)))
+        self.l.setFont(1, gFont("Regular", scale(23)))
+        self.l.setItemHeight(scale(80))
 
 
 def _text(x, w, text, color=0xFFFFFF, font=0, y=4, h=42, align=RT_HALIGN_LEFT):
-    return MultiContentEntryText(pos=(x, y), size=(w, h), font=font, flags=align | RT_VALIGN_CENTER, text=text, color=color, color_sel=color)
+    return MultiContentEntryText(pos=(scale(x, 0), scale(y)), size=(scale(w, 0), scale(h)), font=font,
+                                 flags=align | RT_VALIGN_CENTER, text=text, color=color, color_sel=color)
 
 
 class StreamsScreen(Screen, Async):
@@ -50,8 +53,8 @@ class StreamsScreen(Screen, Async):
         self.streams = None
         self.busy = False
         self["title"] = Label(title)
-        self["status"] = Label("Searching Orion...")
-        self["hint"] = Label("OK Play    MENU Send to a service (download)    EXIT Back")
+        self["status"] = Label(_("Searching for streams..."))
+        self["hint"] = Label(_("OK Play    MENU Send to a service (download)    EXIT Back"))
         for name, _color in KEY_COLORS:
             self["key_" + name] = Label("")
         self["list"] = StreamList()
@@ -85,13 +88,13 @@ class StreamsScreen(Screen, Async):
             on = s.cached_on(keys)
             maybe = s.maybe_on(keys)
             if on:
-                badge, color = "Cached: " + " ".join(shorts[k] for k in on), 0x46D369
+                badge, color = _("Cached: ") + " ".join(shorts[k] for k in on), 0x46D369
             elif maybe:
-                badge, color = "Maybe: " + " ".join(shorts[k] for k in maybe), 0xE5A00D
+                badge, color = _("Maybe: ") + " ".join(shorts[k] for k in maybe), 0xE5A00D
             else:
-                badge, color = "Not cached", 0x888888
+                badge, color = _("Not cached"), 0x888888
             audio = channels_label(s.channels) + (" " + s.audio_codec.upper() if s.audio_codec else "")
-            extra = "   ".join(x for x in (s.video_codec.upper(), "%s seeds" % s.seeds if s.seeds else "", s.source) if x)
+            extra = "   ".join(x for x in (s.video_codec.upper(), _("%s seeds") % s.seeds if s.seeds else "", s.source) if x)
             entries.append([s,
                             _text(15, 130, s.quality_label),
                             _text(150, 170, human_size(s.size)),
@@ -103,18 +106,18 @@ class StreamsScreen(Screen, Async):
         self["list"].setList(entries)
         cached_total = len([s for s in self.streams if s.cached_on(keys)])
         hidden = sum(self.app.last_hidden.values())
-        self["status"].setText("%s: %d of %d streams shown   |   %d cached on your services%s%s" % (
-            self.app.stream_source().name, len(shown), len(self.streams), cached_total,
-            "   |   %d hidden: too much for this box/TV (%s)" % (hidden, ", ".join(sorted(self.app.last_hidden))) if hidden else "",
-            "" if providers else "   |   no debrid service configured"))
+        self["status"].setText(_("%s: %d of %d streams shown   |   %d cached on your services") % (
+            self.app.stream_source().name, len(shown), len(self.streams), cached_total) +
+            (_("   |   %d hidden: too much for this box/TV (%s)") % (hidden, ", ".join(sorted(_(r) for r in self.app.last_hidden))) if hidden else "") +
+            ("" if providers else _("   |   no debrid service configured")))
         self.updateKeys()
 
     def updateKeys(self):
         s = self.app.s
-        self["key_red"].setText("Cached only: %s" % ("ON" if s.get("filter_cached_only") else "off"))
-        self["key_green"].setText("Resolution: %s" % QUALITY_LABEL.get(s.get("filter_resolution"), "Any"))
-        self["key_yellow"].setText("Audio: %s" % ("Any" if s.get("filter_audio") == "any" else s.get("filter_audio") + "+"))
-        self["key_blue"].setText("Language: %s" % ("Any" if s.get("filter_language") == "any" else str(s.get("filter_language")).upper()))
+        self["key_red"].setText(_("Cached only: %s") % (_("ON") if s.get("filter_cached_only") else _("off")))
+        self["key_green"].setText(_("Resolution: %s") % QUALITY_LABEL.get(s.get("filter_resolution"), _("Any")))
+        self["key_yellow"].setText(_("Audio: %s") % (_("Any") if s.get("filter_audio") == "any" else s.get("filter_audio") + "+"))
+        self["key_blue"].setText(_("Language: %s") % (_("Any") if s.get("filter_language") == "any" else str(s.get("filter_language")).upper()))
 
     def cycle(self, key, choices):
         current = self.app.s.get(key)
@@ -150,13 +153,13 @@ class StreamsScreen(Screen, Async):
         if not stream or self.busy:
             return
         self.busy = True
-        self["status"].setText("Getting the link...")
+        self["status"].setText(_("Getting the link..."))
         self.bg(lambda: self.app.play(stream, self.season, self.episode), self.resolved, lambda e: self.playFailed(stream, e))
 
     def resolved(self, result):
         self.busy = False
         url, provider = result
-        self["status"].setText("Playing from %s" % provider.name)
+        self["status"].setText(_("Playing from %s") % provider.name)
         from .player import DebridFlixPlayer
         sref = eServiceReference(int(self.app.s.get("player_type") or 4097), 0, url)
         sref.setName(self.title_text)
@@ -165,11 +168,11 @@ class StreamsScreen(Screen, Async):
     def playFailed(self, stream, error):
         self.busy = False
         if isinstance(error, NotCached):
-            self["status"].setText("Not cached on your services")
-            self.askSend(stream, "Not cached yet. Start the download on:")
+            self["status"].setText(_("Not cached on your services"))
+            self.askSend(stream, _("Not cached yet. Start the download on:"))
         elif isinstance(error, NotReady):
             self.rebuild()
-            self.showInfo(str(error) + "\nTry again once the service has finished downloading.")
+            self.showInfo(str(error) + _("\nTry again once the service has finished downloading."))
         else:
             self.rebuild()
             self.showError(error)
@@ -177,17 +180,17 @@ class StreamsScreen(Screen, Async):
     def keySend(self):
         stream = self.currentStream()
         if stream and not self.busy:
-            self.askSend(stream, "Download this torrent on:")
+            self.askSend(stream, _("Download this torrent on:"))
 
     def askSend(self, stream, title):
         choices = [(p.name, p.key) for p in self.app.providers()]
         if not choices:
-            self.showInfo("No debrid service configured. Open Setup from the home screen (BLUE).")
+            self.showInfo(_("No debrid service configured. Open Setup from the home screen (BLUE)."))
             return
         self.session.openWithCallback(lambda choice: self.sendChosen(stream, choice), ChoiceBox, title=title, list=choices)
 
     def sendChosen(self, stream, choice):
         if not choice:
             return
-        self["status"].setText("Sending to %s..." % choice[0])
+        self["status"].setText(_("Sending to %s...") % choice[0])
         self.bg(lambda: self.app.send(stream, choice[1]), lambda message: (self["status"].setText(message), self.showInfo(message)))

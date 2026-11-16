@@ -8,6 +8,7 @@ Reply: {"streams": [{"name": "Torrentio\\n4k HDR", "title": "<release>\\n<file>\
 import re
 
 from . import http
+from .i18n import _, name_languages
 from .models import Stream, build_magnet
 
 BASE = "https://torrentio.strem.fun"
@@ -63,6 +64,7 @@ def parse_torrentio_stream(raw):
         if flag in info and code not in languages:
             languages.append(code)
     text = " ".join([str(raw.get("name") or ""), lines[0], name])
+    languages += [l for l in name_languages(" ".join([lines[0], name])) if l not in languages]
     return Stream(id=infohash[:8], name=name, hash=infohash, magnet=build_magnet(infohash, name),
                   size=float(size.group(1)) * UNITS[size.group(2)] if size else 0,
                   seeds=int(seeds.group(1)) if seeds else 0, quality=_quality(text),
@@ -101,7 +103,7 @@ class Torrentio(object):
     def streams(self, kind, imdb=None, season=None, episode=None, limit=None, keep=None):
         """keep: optional predicate applied before the per-resolution balancing (drop unplayable first)."""
         if not imdb:
-            raise TorrentioError("No IMDb id for this title")
+            raise TorrentioError(_("No IMDb id for this title"))
         imdb = imdb if str(imdb).startswith("tt") else "tt%s" % imdb
         path = "/stream/movie/%s.json" % imdb if kind == "movie" else "/stream/series/%s:%s:%s.json" % (imdb, season or 1, episode or 1)
         try:

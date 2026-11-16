@@ -14,7 +14,8 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .settings import SETUP_FIELDS
+from .i18n import _, language
+from .settings import CHOICE_LABELS, SETUP_FIELDS
 
 SECRET_MARKERS = ("_key", "_token", "_secret", "_password")
 LINKABLE = (("realdebrid", "Real-Debrid"), ("alldebrid", "AllDebrid"), ("trakt", "Trakt"))
@@ -31,8 +32,8 @@ HELP = {
     "os_api_key": "opensubtitles.com > API consumers",
 }
 
-PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DebridFlix pairing</title><style>
+PAGE = """<!doctype html><html lang="%(lang)s"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%(t_title)s</title><style>
 body{background:#141414;color:#eee;font-family:sans-serif;margin:0;padding:16px;max-width:560px;margin:auto}
 h1{color:#e50914;font-size:24px;display:flex;align-items:center;gap:10px}h1 img{width:48px;height:48px}
 h2{font-size:17px;margin:26px 0 8px;border-bottom:1px solid #333;padding-bottom:4px}
@@ -43,16 +44,17 @@ button.alt{background:#333}.box{background:#222;border-radius:6px;padding:12px;m
 .code{font-size:26px;letter-spacing:3px;font-weight:bold;color:#46d369}.ok{color:#46d369}.err{color:#ff6b6b}a{color:#6cb6ff}
 </style></head><body><h1><img src="logo.png" alt="">DebridFlix</h1>
 %(notice)s
-<h2>Link accounts</h2>
+<h2>%(t_links)s</h2>
 %(links)s
-<form method="post" action="save"><h2>Keys and options</h2>
-<small>Fields showing "saved" already have a value; leave them empty to keep it.</small>
+<form method="post" action="save"><h2>%(t_keys)s</h2>
+<small>%(t_keep)s</small>
 %(fields)s
-<button type="submit">Save to the box</button></form>
+<button type="submit">%(t_save)s</button></form>
 <script>
+var T=%(js)s;
 function render(s){for(var k in s){var e=document.getElementById('st_'+k),v=s[k];if(!e)continue;
-if(v.status=='waiting')e.innerHTML='Open <a target="_blank" href="'+v.url+'">'+v.url+'</a> and enter<div class="code">'+v.code+'</div>Waiting for approval...';
-else if(v.status=='linked')e.innerHTML='<span class="ok">Linked.</span>';
+if(v.status=='waiting')e.innerHTML=T.open+' <a target="_blank" href="'+v.url+'">'+v.url+'</a> '+T.enter+'<div class="code">'+v.code+'</div>'+T.wait;
+else if(v.status=='linked')e.innerHTML='<span class="ok">'+T.linked+'</span>';
 else if(v.status=='error')e.innerHTML='<span class="err">'+v.message+'</span>';
 e.style.display=v.status?'block':'none';}}
 function poll(){fetch('status').then(function(r){return r.json()}).then(render).catch(function(){})}
@@ -129,7 +131,7 @@ class PairingServer(object):
             elif value or not is_secret(key):
                 values[key] = value
         self.app.s.update(values)
-        self.events.append("Settings saved from the phone")
+        self.events.append(_("Settings saved from the phone"))
 
     def link(self, service):
         names = dict(LINKABLE)
@@ -153,12 +155,12 @@ class PairingServer(object):
                 try:
                     if target.auth_poll(state):
                         self.links[service] = {"status": "linked"}
-                        self.events.append("%s linked" % names[service])
+                        self.events.append(_("%s linked") % names[service])
                         return
                 except Exception as err:
                     self.links[service] = {"status": "error", "message": str(err)}
                     return
-            self.links[service] = {"status": "error", "message": "The code expired. Try again."}
+            self.links[service] = {"status": "error", "message": _("The code expired. Try again.")}
 
         thread = threading.Thread(target=wait)
         thread.daemon = True
@@ -170,25 +172,31 @@ class PairingServer(object):
         fields = []
         for text, key, kind, choices in SETUP_FIELDS:
             value = s.get(key)
-            hint = HELP.get(key, "")
-            head = '<label for="%s">%s%s</label>' % (key, html.escape(text), " <small>- %s</small>" % html.escape(hint) if hint else "")
+            hint = _(HELP.get(key, ""))
+            head = '<label for="%s">%s%s</label>' % (key, html.escape(_(text)), " <small>- %s</small>" % html.escape(hint) if hint else "")
             if kind == "bool":
-                options = "".join('<option value="%s"%s>%s</option>' % (v, " selected" if (v == "yes") == bool(value) else "", v) for v in ("yes", "no"))
+                options = "".join('<option value="%s"%s>%s</option>' % (v, " selected" if (v == "yes") == bool(value) else "", label)
+                                  for v, label in (("yes", _("yes")), ("no", _("no"))))
                 fields.append('%s<select id="%s" name="%s">%s</select>' % (head, key, key, options))
             elif kind == "choice":
-                options = "".join('<option%s>%s</option>' % (" selected" if c == str(value) else "", html.escape(c)) for c in choices)
+                options = "".join('<option value="%s"%s>%s</option>' % (html.escape(c, True), " selected" if c == str(value) else "",
+                                                                       html.escape(_(CHOICE_LABELS.get(c, c)))) for c in choices)
                 fields.append('%s<select id="%s" name="%s">%s</select>' % (head, key, key, options))
             elif is_secret(key):
                 fields.append('%s<input id="%s" name="%s" autocomplete="off" autocapitalize="off" placeholder="%s">' % (
-                    head, key, key, "saved - leave empty to keep" if value else "not set"))
+                    head, key, key, _("saved - leave empty to keep") if value else _("not set")))
             else:
                 fields.append('%s<input id="%s" name="%s" autocapitalize="off" value="%s">' % (head, key, key, html.escape(str(value or ""), True)))
         linked = {"realdebrid": bool(s.get("rd_token")), "alldebrid": bool(s.get("ad_key")), "trakt": bool(s.get("trakt_access"))}
         links = "".join(
             '<button type="button" class="alt" onclick="link(\'%s\')">%s %s</button><div class="box" id="st_%s" style="display:none"></div>' % (
-                key, "Re-link" if linked[key] else "Link", name, key) for key, name in LINKABLE)
-        notice = '<div class="box ok">Saved. You can close this page or keep going.</div>' if saved else ""
-        return PAGE % {"fields": "\n".join(fields), "links": links, "notice": notice}
+                key, _("Re-link") if linked[key] else _("Link"), name, key) for key, name in LINKABLE)
+        notice = '<div class="box ok">%s</div>' % html.escape(_("Saved. You can close this page or keep going.")) if saved else ""
+        js = json.dumps({"open": _("Open"), "enter": _("and enter"), "wait": _("Waiting for approval..."), "linked": _("Linked.")})
+        return PAGE % {"fields": "\n".join(fields), "links": links, "notice": notice, "lang": language(), "js": js,
+                       "t_title": html.escape(_("DebridFlix pairing")), "t_links": html.escape(_("Link accounts")),
+                       "t_keys": html.escape(_("Keys and options")), "t_save": html.escape(_("Save to the box")),
+                       "t_keep": html.escape(_('Fields showing "saved" already have a value; leave them empty to keep it.'))}
 
     def _handler(self):
         server = self

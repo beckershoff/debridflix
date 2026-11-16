@@ -15,6 +15,8 @@ from .settings import Settings
 from .subtitles import OpenSubtitles
 from .tmdb import Tmdb
 from .trakt import Trakt
+from . import i18n
+from .i18n import _
 
 LOG_PATH = "/tmp/debridflix.log"
 
@@ -57,17 +59,22 @@ class App(object):
         for p in providers(self.s, self.log, only_configured=False):
             if p.key == key:
                 return p
-        raise ProviderError("Unknown service %s" % key)
+        raise ProviderError(_("Unknown service %s") % key)
 
     def missing_setup(self):
         missing = []
         if not self.tmdb.configured():
-            missing.append("TMDB API key")
+            missing.append(_("TMDB API key"))
         if self.s.get("stream_source") == "orion" and not self.orion.configured():
-            missing.append("Orion app + user key (or set Stream search to auto)")
+            missing.append(_("Orion app + user key (or set Stream search to auto)"))
         if not self.providers():
-            missing.append("at least one debrid service")
+            missing.append(_("at least one debrid service"))
         return missing
+
+    def apply_language(self, system_locale=""):
+        """Interface language from the setting; 'auto' follows Enigma2's menu language (e.g. 'de_DE')."""
+        i18n.set_language(i18n.resolve(self.s.get("ui_language"), system_locale))
+        return i18n.language()
 
     def device_limits(self):
         if self._detected is None:
@@ -76,7 +83,7 @@ class App(object):
 
     def stream_filter(self):
         return StreamFilter(bool(self.s.get("filter_cached_only")), self.s.get("filter_resolution"),
-                            self.s.get("filter_audio"), self.s.get("filter_language"))
+                            self.s.get("filter_audio"), self.s.get("filter_language"), self.s.list("audio_languages"))
 
     # --- catalogue ------------------------------------------------------
     def rows(self):
@@ -84,23 +91,23 @@ class App(object):
         t = self.tmdb
         rows = []
         if self.trakt.configured():
-            rows.append(("My watchlist - Movies", lambda: self.watchlist_items("movie")))
-            rows.append(("My watchlist - Series", lambda: self.watchlist_items("show")))
+            rows.append((_("My watchlist - Movies"), lambda: self.watchlist_items("movie")))
+            rows.append((_("My watchlist - Series"), lambda: self.watchlist_items("show")))
         rows += [
-            ("Trending movies", lambda: t.trending("movie")),
-            ("Trending series", lambda: t.trending("show")),
-            ("Popular movies", lambda: t.popular("movie")),
-            ("Popular series", lambda: t.popular("show")),
-            ("Top rated movies", lambda: t.top_rated("movie")),
-            ("Top rated series", lambda: t.top_rated("show")),
+            (_("Trending movies"), lambda: t.trending("movie")),
+            (_("Trending series"), lambda: t.trending("show")),
+            (_("Popular movies"), lambda: t.popular("movie")),
+            (_("Popular series"), lambda: t.popular("show")),
+            (_("Top rated movies"), lambda: t.top_rated("movie")),
+            (_("Top rated series"), lambda: t.top_rated("show")),
         ]
         return rows
 
     def genre_rows(self):
         rows = []
-        for kind, label in (("movie", "Movies"), ("show", "Series")):
+        for kind, label in (("movie", _("Movies - %s")), ("show", _("Series - %s"))):
             for genre_id, name in self.tmdb.genres(kind):
-                rows.append(("%s - %s" % (label, name), (lambda k=kind, g=genre_id: self.tmdb.discover(k, g))))
+                rows.append((label % name, (lambda k=kind, g=genre_id: self.tmdb.discover(k, g))))
         return rows
 
     def watchlist_items(self, kind):
@@ -210,14 +217,14 @@ class App(object):
             order = [p for p in self.providers() if stream.cached.get(p.key)]
             order += [p for p in self.providers() if p.key in stream.cached and stream.cached[p.key] is None]
         if not order:
-            raise NotCached("Not cached on any of your services")
+            raise NotCached(_("Not cached on any of your services"))
         last = None
         for provider in order:
             try:
                 url = provider.resolve(stream.magnet, season, episode)
                 # only ever play the service's own HTTPS download: never a magnet / P2P, always encrypted
                 if not str(url or "").lower().startswith("https://"):
-                    raise ProviderError("%s returned a non-HTTPS link; refusing to play it" % provider.name)
+                    raise ProviderError(_("%s returned a non-HTTPS link; refusing to play it") % provider.name)
                 return url, provider
             except NotReady as err:
                 stream.cached[provider.key] = False
@@ -263,19 +270,19 @@ class App(object):
         lines = []
         for provider in providers(self.s, self.log, only_configured=False):
             if not provider.configured():
-                lines.append("%s: not set" % provider.name)
+                lines.append(_("%s: not set") % provider.name)
                 continue
             try:
-                lines.append("%s: OK - %s" % (provider.name, provider.account()))
+                lines.append(_("%s: OK - %s") % (provider.name, provider.account()))
             except Exception as err:
                 lines.append("%s" % err if str(err).startswith(provider.name) else "%s: %s" % (provider.name, err))
         if self.trakt.configured():
             try:
-                lines.append("Trakt: OK - %s" % self.trakt.account())
+                lines.append(_("Trakt: OK - %s") % self.trakt.account())
             except Exception as err:
                 lines.append(str(err))
         else:
-            lines.append("Trakt: not linked")
-        lines.append("TMDB: %s" % ("key set" if self.tmdb.configured() else "not set"))
-        lines.append("Orion: %s" % ("keys set" if self.orion.configured() else "not set"))
+            lines.append(_("Trakt: not linked"))
+        lines.append(_("TMDB: %s") % (_("key set") if self.tmdb.configured() else _("not set")))
+        lines.append(_("Orion: %s") % (_("keys set") if self.orion.configured() else _("not set")))
         return "\n".join(lines)

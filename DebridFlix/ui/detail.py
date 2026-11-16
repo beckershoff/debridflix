@@ -6,6 +6,7 @@ from Components.Pixmap import Pixmap
 from Screens.Screen import Screen
 
 from .common import BG, GREY, Async, label, screen, set_pixmap
+from ..core.i18n import _
 
 
 def _skin():
@@ -35,7 +36,7 @@ class DetailScreen(Screen, Async):
         self["title"] = Label(item["title"])
         self["meta"] = Label("")
         self["overview"] = Label(item.get("overview") or "")
-        self["status"] = Label("Loading...")
+        self["status"] = Label(_("Loading..."))
         self["list"] = MenuList([])
         self["actions"] = ActionMap(["OkCancelActions"], {"ok": self.keyOk, "cancel": self.keyCancel}, -1)
         self.onLayoutFinish.append(self.start)
@@ -61,12 +62,12 @@ class DetailScreen(Screen, Async):
     def loaded(self, result):
         item, self.seasons, self.inWatchlist = result
         self.item.update(item)
-        parts = [self.item.get("year") or "", "Movie" if self.item["kind"] == "movie" else "Series",
+        parts = [self.item.get("year") or "", _("Movie") if self.item["kind"] == "movie" else _("Series"),
                  ", ".join(self.item.get("genres") or [])]
         if self.item.get("runtime"):
-            parts.append("%s min" % self.item["runtime"])
+            parts.append(_("%s min") % self.item["runtime"])
         if self.item.get("rating"):
-            parts.append("Rating %.1f" % float(self.item["rating"]))
+            parts.append(_("Rating %.1f") % float(self.item["rating"]))
         self["meta"].setText("   |   ".join(p for p in parts if p))
         self["overview"].setText(self.item.get("overview") or "")
         self["status"].setText("")
@@ -76,12 +77,12 @@ class DetailScreen(Screen, Async):
         self.season = None
         entries = []
         if self.item["kind"] == "movie":
-            entries.append(("Find streams", ("streams", None)))
+            entries.append((_("Find streams"), ("streams", None)))
         else:
             for number, name, count in self.seasons:
-                entries.append(("%s   (%d episodes)" % (name, count), ("season", number)))
+                entries.append((_("%s   (%d episodes)") % (name, count), ("season", number)))
         if self.inWatchlist is not None:
-            entries.append(("Remove from Trakt watchlist" if self.inWatchlist else "Add to Trakt watchlist", ("watchlist", None)))
+            entries.append((_("Remove from Trakt watchlist") if self.inWatchlist else _("Add to Trakt watchlist"), ("watchlist", None)))
         self["list"].setList(entries)
 
     def keyOk(self):
@@ -92,7 +93,7 @@ class DetailScreen(Screen, Async):
         if action == "streams":
             self.openStreams(None, None, self.item["title"])
         elif action == "season":
-            self["status"].setText("Loading episodes...")
+            self["status"].setText(_("Loading episodes..."))
             self.bg(lambda: self.app.tmdb.season(self.item["tmdb"], value), lambda eps: self.showEpisodes(value, eps))
         elif action == "episode":
             self.openStreams(self.season, value, "%s S%02dE%02d" % (self.item["title"], self.season, value))
@@ -108,7 +109,7 @@ class DetailScreen(Screen, Async):
 
     def showEpisodes(self, season, episodes):
         self.season = season
-        self["status"].setText("Season %d - EXIT goes back to the seasons" % season)
+        self["status"].setText(_("Season %d - EXIT goes back to the seasons") % season)
         self["list"].setList([("E%02d   %s   %s" % (number, name, ("(%s)" % date) if date else ""), ("episode", number))
                               for number, name, _overview, date in episodes if number])
 

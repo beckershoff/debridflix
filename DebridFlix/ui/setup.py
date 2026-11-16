@@ -13,8 +13,9 @@ from Screens.MessageBox import MessageBox
 from Screens.Screen import Screen
 from Screens.VirtualKeyBoard import VirtualKeyBoard
 
-from ..core.settings import SETUP_FIELDS
+from ..core.settings import CHOICE_LABELS, SETUP_FIELDS
 from .common import BG, GREY, Async, label, screen
+from ..core.i18n import _
 
 
 def _setup_skin():
@@ -44,19 +45,20 @@ class SetupScreen(ConfigListScreen, Screen, Async):
             if kind == "bool":
                 element = ConfigYesNo(default=bool(value))
             elif kind == "choice":
-                element = ConfigSelection(default=str(value) if str(value) in choices else choices[0], choices=choices)
+                element = ConfigSelection(default=str(value) if str(value) in choices else choices[0],
+                                          choices=[(c, _(CHOICE_LABELS.get(c, c))) for c in choices])
             else:
                 element = ConfigText(default=str(value or ""), fixed_size=False)
             self.fields.append((key, kind, element))
-            entries.append(getConfigListEntry(text, element))
+            entries.append(getConfigListEntry(_(text), element))
         ConfigListScreen.__init__(self, entries, session=session)
         if "HelpWindow" not in self:
             self["HelpWindow"] = Pixmap()
-        self["title"] = Label("DebridFlix setup")
-        self["hint"] = Label("OK opens the keyboard for text fields. Everything is stored in /etc/enigma2/debridflix.json")
-        self["key_red"] = Label("Cancel")
-        self["key_green"] = Label("Save")
-        self["key_yellow"] = Label("Phone pairing / link / test")
+        self["title"] = Label(_("DebridFlix setup"))
+        self["hint"] = Label(_("OK opens the keyboard for text fields. Everything is stored in /etc/enigma2/debridflix.json"))
+        self["key_red"] = Label(_("Cancel"))
+        self["key_green"] = Label(_("Save"))
+        self["key_yellow"] = Label(_("Phone pairing / link / test"))
         self["debridflixSetupActions"] = ActionMap(["OkCancelActions", "ColorActions"], {
             "ok": self.keyOk, "cancel": self.close, "red": self.close, "green": self.keySave, "yellow": self.keyLink}, -2)
 
@@ -89,12 +91,12 @@ class SetupScreen(ConfigListScreen, Screen, Async):
 
     def keyLink(self):
         self.store()
-        choices = [("Set up from your phone (QR code)", "pair"),
-                   ("Link Real-Debrid (code on real-debrid.com/device)", "realdebrid"),
-                   ("Link AllDebrid (PIN)", "alldebrid"),
-                   ("Link Trakt (code on trakt.tv/activate)", "trakt"),
-                   ("Test all connections", "test")]
-        self.session.openWithCallback(self.linkChosen, ChoiceBox, title="Accounts", list=choices)
+        choices = [(_("Set up from your phone (QR code)"), "pair"),
+                   (_("Link Real-Debrid (code on real-debrid.com/device)"), "realdebrid"),
+                   (_("Link AllDebrid (PIN)"), "alldebrid"),
+                   (_("Link Trakt (code on trakt.tv/activate)"), "trakt"),
+                   (_("Test all connections"), "test")]
+        self.session.openWithCallback(self.linkChosen, ChoiceBox, title=_("Accounts"), list=choices)
 
     def linkChosen(self, choice):
         if not choice:
@@ -116,7 +118,7 @@ class SetupScreen(ConfigListScreen, Screen, Async):
     def linkClosed(self, linked=False):
         self.reloadForm()
         if linked:
-            self.showInfo("Account linked.", 4)
+            self.showInfo(_("Account linked."), 4)
 
 
 class DeviceAuthScreen(Screen, Async):
@@ -132,8 +134,8 @@ class DeviceAuthScreen(Screen, Async):
         self.deadline = 0
         self.polling = False
         self["title"] = Label(title)
-        self["text"] = Label("Requesting a code...")
-        self["hint"] = Label("EXIT cancels")
+        self["text"] = Label(_("Requesting a code..."))
+        self["hint"] = Label(_("EXIT cancels"))
         self["actions"] = ActionMap(["OkCancelActions"], {"cancel": self.close, "ok": self.close}, -1)
         self.timer = eTimer()
         self.timer.callback.append(self.poll)
@@ -147,14 +149,14 @@ class DeviceAuthScreen(Screen, Async):
     def started(self, state):
         self.state = state
         self.deadline = time.time() + state.get("expires", 600)
-        self["text"].setText("On your phone or computer open\n%s\n\nand enter the code\n%s" % (state["url"], state["code"]))
+        self["text"].setText(_("On your phone or computer open\n%s\n\nand enter the code\n%s") % (state["url"], state["code"]))
         self.timer.start(max(2, int(state.get("interval", 5))) * 1000)
 
     def poll(self):
         if self.polling:
             return
         if time.time() > self.deadline:
-            self.failed("The code has expired. Try again.")
+            self.failed(_("The code has expired. Try again."))
             return
         self.polling = True
         self.bg(lambda: self.target.auth_poll(self.state), self.polled, self.failed)

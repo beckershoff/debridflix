@@ -8,6 +8,7 @@ from Screens.Screen import Screen
 from Screens.VirtualKeyBoard import VirtualKeyBoard
 
 from .common import BG, GREY, PANEL, RED, Async, label, point, screen, set_pixmap
+from ..core.i18n import _
 
 COLS = 9
 POSTER_W, POSTER_H = 154, 231
@@ -88,15 +89,16 @@ class HomeScreen(Screen, Async):
             self.rows.insert(0, keep)
         self.row = 0
         missing = self.app.missing_setup()
-        self["status"].setText("Setup needed:\n" + "\n".join(missing) + "\n\nBLUE, then YELLOW to pair with your phone" if missing else "")
+        self["status"].setText(_("Setup needed:\n") + "\n".join(missing) + _("\n\nBLUE, then YELLOW to pair with your phone") if missing else "")
         self.refresh()
         if self.app.tmdb.configured():
             self.bg(self.app.genre_rows, self.genresLoaded, lambda err: None)
 
     @staticmethod
-    def makeRow(title, loader):
+    def makeRow(title, loader, search=False):
+        # flags, not title matching: titles are translated
         return {"title": title, "loader": loader, "items": None, "loading": False, "error": "", "sel": 0, "offset": 0,
-                "watchlist": title.startswith("My watchlist")}
+                "watchlist": title in (_("My watchlist - Movies"), _("My watchlist - Series")), "search": search}
 
     def genresLoaded(self, rows):
         self.rows += [self.makeRow(title, loader) for title, loader in rows]
@@ -139,11 +141,11 @@ class HomeScreen(Screen, Async):
             if row:
                 text = row["title"]
                 if row["loading"]:
-                    text += "   (loading...)"
+                    text += _("   (loading...)")
                 elif row["error"]:
                     text += "   - " + row["error"]
                 elif not row["items"]:
-                    text += "   (nothing here)"
+                    text += _("   (nothing here)")
             self["rowtitle%d" % d].setText(text)
             for c in range(COLS):
                 item = None
@@ -158,17 +160,17 @@ class HomeScreen(Screen, Async):
         if item:
             self["frame"].show()
             self["title"].setText(item["title"])
-            parts = [item.get("year") or "", "Movie" if item["kind"] == "movie" else "Series"]
+            parts = [item.get("year") or "", _("Movie") if item["kind"] == "movie" else _("Series")]
             if item.get("rating"):
-                parts.append("Rating %.1f" % float(item["rating"]))
+                parts.append(_("Rating %.1f") % float(item["rating"]))
             self["meta"].setText("   |   ".join(p for p in parts if p))
             self["overview"].setText(clip(item.get("overview") or "", 380))  # 4 lines; a 5th would be cut in half
         else:
             self["frame"].hide()
             for name in ("title", "meta", "overview"):
                 self[name].setText("")
-        self["hint"].setText("OK Details    RED Search    GREEN Watchlist    YELLOW Cached only: %s    BLUE Setup" % (
-            "ON" if self.app.browse_cached_only else "off"))
+        self["hint"].setText(_("OK Details    RED Search    GREEN Watchlist    YELLOW Cached only: %s    BLUE Setup") % (
+            _("ON") if self.app.browse_cached_only else _("off")))
 
     def drawCell(self, r, c, item):
         text, pix = self["t%d_%d" % (r, c)], self["p%d_%d" % (r, c)]
@@ -248,13 +250,13 @@ class HomeScreen(Screen, Async):
             self.resetRows(only_watchlist=True)
 
     def keySearch(self):
-        self.session.openWithCallback(self.searchEntered, VirtualKeyBoard, title="Search movies and series", text="")
+        self.session.openWithCallback(self.searchEntered, VirtualKeyBoard, title=_("Search movies and series"), text="")
 
     def searchEntered(self, text):
         if not text:
             return
-        self.rows = [r for r in self.rows if not r["title"].startswith("Search: ")]
-        self.rows.insert(0, self.makeRow("Search: %s" % text, lambda: self.app.tmdb.search(text)))
+        self.rows = [r for r in self.rows if not r["search"]]
+        self.rows.insert(0, self.makeRow(_("Search: %s") % text, lambda: self.app.tmdb.search(text), search=True))
         self.row = 0
         self.refresh()
 
@@ -263,7 +265,7 @@ class HomeScreen(Screen, Async):
         if not item:
             return
         if not self.app.trakt.configured():
-            self.showInfo("Link Trakt first: BLUE (Setup), then YELLOW.")
+            self.showInfo(_("Link Trakt first: BLUE (Setup), then YELLOW."))
             return
         trakt = self.app.trakt
 
@@ -271,7 +273,7 @@ class HomeScreen(Screen, Async):
             return trakt.set_watchlist(item, not trakt.in_watchlist(item))
 
         def done(state):
-            self.showInfo("%s %s your Trakt watchlist" % (item["title"], "added to" if state else "removed from"), 3)
+            self.showInfo((_("%s added to your Trakt watchlist") if state else _("%s removed from your Trakt watchlist")) % item["title"], 3)
             self.resetRows(only_watchlist=True)
 
         self.bg(toggle, done)
@@ -285,5 +287,7 @@ class HomeScreen(Screen, Async):
         self.session.openWithCallback(self.setupClosed, SetupScreen, self.app)
 
     def setupClosed(self, *_args):
-        search = [r for r in self.rows if r["title"].startswith("Search: ")]
+        from .common import enigma_locale
+        self.app.apply_language(enigma_locale())  # the language may have changed in Setup
+        search = [r for r in self.rows if r["search"]]
         self.buildRows(keep=search[0] if search else None)

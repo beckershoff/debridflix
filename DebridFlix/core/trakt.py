@@ -2,6 +2,7 @@
 import time
 
 from . import http
+from .i18n import _
 
 BASE = "https://api.trakt.tv"
 
@@ -62,7 +63,7 @@ class Trakt(object):
     # --- device linking -------------------------------------------------
     def auth_start(self):
         if not self.has_app():
-            raise TraktError("Enter the Trakt client ID first")
+            raise TraktError(_("Enter the Trakt client ID first"))
         reply = self._call("POST", "/oauth/device/code", {"client_id": self.s.get("trakt_client_id")}, auth=False)
         return {"url": reply.get("verification_url") or "https://trakt.tv/activate", "code": reply["user_code"],
                 "interval": int(reply.get("interval") or 5), "expires": int(reply.get("expires_in") or 600),

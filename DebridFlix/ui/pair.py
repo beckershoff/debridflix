@@ -11,6 +11,7 @@ from Screens.Screen import Screen
 from ..core import qr
 from ..core.pairing import PairingServer
 from .common import GREY, Async, label, screen, set_pixmap
+from ..core.i18n import _
 
 LOGO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logo.png")
 
@@ -30,13 +31,13 @@ class PairScreen(Screen, Async):
         self.app = app
         self.server = PairingServer(app, logo_path=LOGO)
         self.seen = 0
-        self["title"] = Label("Set up DebridFlix from your phone")
+        self["title"] = Label(_("Set up DebridFlix from your phone"))
         self["qr"] = Pixmap()
-        self["text"] = Label("1. Put your phone on the same Wi-Fi as this box.\n2. Scan the code with the camera.\n"
-                             "3. Paste your keys, or tap Link for Real-Debrid, AllDebrid and Trakt.")
+        self["text"] = Label(_("1. Put your phone on the same Wi-Fi as this box.\n2. Scan the code with the camera.\n"
+                               "3. Paste your keys, or tap Link for Real-Debrid, AllDebrid and Trakt."))
         self["url"] = Label("")
         self["events"] = Label("")
-        self["hint"] = Label("The page only works while this screen is open.  OK / EXIT closes it.")
+        self["hint"] = Label(_("The page only works while this screen is open.  OK / EXIT closes it."))
         self["actions"] = ActionMap(["OkCancelActions"], {"ok": self.finish, "cancel": self.finish}, -1)
         self.timer = eTimer()
         self.timer.callback.append(self.tick)
@@ -52,7 +53,7 @@ class PairScreen(Screen, Async):
                 fh.write(qr.png(qr.encode(url)))
         except Exception as err:
             self["qr"].hide()
-            self["url"].setText("Could not start pairing: %s" % err)
+            self["url"].setText(_("Could not start pairing: %s") % err)
             return
         if not set_pixmap(self["qr"], path):
             self["qr"].hide()

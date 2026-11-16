@@ -1,5 +1,6 @@
 """TMDB catalogue: rows, search, details, seasons."""
 from . import http
+from .i18n import _, tmdb_locale
 
 BASE = "https://api.themoviedb.org/3"
 IMAGE = "https://image.tmdb.org/t/p/"
@@ -33,8 +34,8 @@ class Tmdb(object):
 
     def _get(self, path, ttl=6 * 3600, **params):
         if not self.configured():
-            raise TmdbError("TMDB API key is not set")
-        params["language"] = self.s.get("tmdb_language")
+            raise TmdbError(_("TMDB API key is not set"))
+        params["language"] = tmdb_locale(self.s.get("tmdb_language"))
         key = "tmdb:%s:%s" % (path, sorted(params.items()))
         if self.cache:
             hit = self.cache.get(key, ttl)
@@ -82,7 +83,7 @@ class Tmdb(object):
         item["imdb"] = raw.get("imdb_id") or (raw.get("external_ids") or {}).get("imdb_id") or ""
         item["genres"] = [g.get("name") for g in raw.get("genres") or []]
         item["runtime"] = raw.get("runtime") or (raw.get("episode_run_time") or [0])[0]
-        seasons = [(s.get("season_number"), s.get("name") or "Season %s" % s.get("season_number"), s.get("episode_count") or 0)
+        seasons = [(s.get("season_number"), s.get("name") or _("Season %s") % s.get("season_number"), s.get("episode_count") or 0)
                    for s in raw.get("seasons") or [] if s.get("season_number")]
         return item, seasons
 

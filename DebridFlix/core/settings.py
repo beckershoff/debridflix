@@ -5,9 +5,12 @@ import os
 CONFIG_PATH = os.environ.get("DEBRIDFLIX_CONFIG", "/etc/enigma2/debridflix.json")
 
 DEFAULTS = {
+    # language: auto = follow the box's menu language (German or English)
+    "ui_language": "auto",
+    "audio_languages": "en,de",      # preferred audio, in order: sorts streams and picks the track in the player
     # metadata
     "tmdb_key": "",
-    "tmdb_language": "en-US",
+    "tmdb_language": "auto",         # auto = German titles/descriptions when the interface is German
     # Orion
     "stream_source": "auto",  # auto = Orion when its keys are set, else Torrentio
     "orion_app_key": "",
@@ -26,7 +29,7 @@ DEFAULTS = {
     "trakt_access": "", "trakt_refresh": "", "trakt_expires": 0,
     # subtitles
     "os_api_key": "", "os_username": "", "os_password": "",
-    "subtitle_languages": "nl,en",
+    "subtitle_languages": "de,en",   # first language that has subtitles wins
     "subtitle_auto": False,
     # filters (remembered between sessions)
     "filter_cached_only": True,
@@ -46,8 +49,10 @@ DEFAULTS = {
 
 # (label, key, kind, choices) - drives the on-box setup screen.
 SETUP_FIELDS = [
+    ("Language / Sprache", "ui_language", "choice", ["auto", "en", "de"]),
+    ("Preferred audio languages", "audio_languages", "text", None),
     ("TMDB API key (v3)", "tmdb_key", "text", None),
-    ("Metadata language", "tmdb_language", "choice", ["en-US", "nl-NL", "de-DE", "fr-FR", "es-ES", "it-IT", "tr-TR", "sv-SE"]),
+    ("Metadata language", "tmdb_language", "choice", ["auto", "en-US", "de-DE", "nl-NL", "fr-FR", "es-ES", "it-IT", "tr-TR", "sv-SE"]),
     ("Stream search (auto = Orion if keys set, else Torrentio)", "stream_source", "choice", ["auto", "orion", "torrentio"]),
     ("Orion app key", "orion_app_key", "text", None),
     ("Orion user key", "orion_user_key", "text", None),
@@ -76,6 +81,15 @@ SETUP_FIELDS = [
 ]
 
 
+# Values that used to be the default and were written to every settings file. On load they are
+# dropped again so the current default applies (only values the user really chose are kept).
+LEGACY_DEFAULTS = {"subtitle_languages": "nl,en", "tmdb_language": "en-US"}
+
+# How choice values are shown (translated with _() where they are displayed)
+CHOICE_LABELS = {"auto": "auto", "any": "any", "en": "English", "de": "Deutsch", "orion": "Orion", "torrentio": "Torrentio",
+                 "hd4k": "4K", "hd1080": "1080p", "hd720": "720p"}
+
+
 class Settings(object):
     def __init__(self, path=None):
         self.path = path or CONFIG_PATH
@@ -87,6 +101,9 @@ class Settings(object):
             with open(self.path, "r") as fh:
                 stored = json.load(fh)
             if isinstance(stored, dict):
+                for key, old in LEGACY_DEFAULTS.items():
+                    if stored.get(key) == old:
+                        del stored[key]
                 self.data.update(stored)
         except (IOError, OSError, ValueError):
             pass
@@ -94,7 +111,8 @@ class Settings(object):
     def save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w") as fh:
-            json.dump(self.data, fh, indent=2, sort_keys=True)
+            # only what differs from the defaults, so improved defaults reach existing installs
+            json.dump(dict((k, v) for k, v in self.data.items() if k not in DEFAULTS or DEFAULTS[k] != v), fh, indent=2, sort_keys=True)
         try:
             os.chmod(tmp, 0o600)
         except OSError:
