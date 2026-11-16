@@ -3,7 +3,7 @@
 Enigma2 plugin for a satellite box running **OpenATV 7.6 (Python 3.13), FHD skin (1920x1080)**.
 Netflix-style poster browser that finds torrents via Orion, shows which are cached on the user's
 debrid services, plays them with the box's MoviePlayer, and can start a cloud download when a
-stream is not cached. Version 0.2.0. Standard library only - no pip packages on the box.
+stream is not cached. Version 0.3.0. Standard library only - no pip packages on the box.
 
 ## Status
 

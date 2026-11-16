@@ -30,7 +30,8 @@ or downloading from unlicensed sources is generally unlawful even if you don't u
 
 ## Install
 
-There is no prebuilt release yet, so build the package from source on any computer with Python 3:
+Download the `.ipk` from the [latest release](https://github.com/beckershoff/debridflix/releases/latest),
+or build it yourself on any computer with Python 3:
 
 ```sh
 git clone https://github.com/beckershoff/debridflix.git
@@ -201,6 +202,6 @@ Some notes for Enigma2 work, learned the hard way:
 
 ## Status
 
-Version 0.2.0. Browsing, Trakt linking, Torrentio search and playback through a debrid service
+Version 0.3.0. Browsing, Trakt linking, Torrentio search and playback through a debrid service
 work on a real box. Orion support is written from its documentation but not yet tested against
 live keys.

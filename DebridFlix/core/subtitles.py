@@ -11,7 +11,9 @@ from . import http
 from .i18n import _, lang_code
 
 BASE = "https://api.opensubtitles.com/api/v1"
-AGENT = "DebridFlix v0.1.0"
+from . import __version__
+
+AGENT = "DebridFlix v%s" % __version__
 
 
 class SubtitleError(Exception):
