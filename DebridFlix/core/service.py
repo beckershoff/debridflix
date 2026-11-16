@@ -1,0 +1,241 @@
+"""Facade used by the UI: catalogue rows, stream search, playback resolving, cloud downloads."""
+import json
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+from . import http
+from .cache import DiskCache
+from .debrid import NotReady, ProviderError, providers
+from .models import StreamFilter
+from .orion import Orion
+from .settings import Settings
+from .subtitles import OpenSubtitles
+from .tmdb import Tmdb
+from .trakt import Trakt
+
+LOG_PATH = "/tmp/debridflix.log"
+
+
+class NotCached(Exception):
+    pass
+
+
+class App(object):
+    def __init__(self, settings=None):
+        self.s = settings or Settings()
+        self.cache = DiskCache(os.path.join(self.s.get("cache_dir"), "data"))
+        self.tmdb = Tmdb(self.s, self.cache)
+        self.orion = Orion(self.s, self.log)
+        self.trakt = Trakt(self.s, self.log)
+        self.subs = OpenSubtitles(self.s, self.log)
+        self.browse_cached_only = False
+
+    # --- helpers --------------------------------------------------------
+    def log(self, *parts):
+        if not self.s.get("debug"):
+            return
+        try:
+            with open(LOG_PATH, "a") as fh:
+                fh.write("%s %s\n" % (time.strftime("%H:%M:%S"), " | ".join(
+                    p if isinstance(p, str) else json.dumps(p, default=str)[:4000] for p in parts)))
+        except (IOError, OSError):
+            pass
+
+    def providers(self):
+        return providers(self.s, self.log)
+
+    def provider_keys(self):
+        return [p.key for p in self.providers()]
+
+    def provider(self, key):
+        for p in providers(self.s, self.log, only_configured=False):
+            if p.key == key:
+                return p
+        raise ProviderError("Unknown service %s" % key)
+
+    def missing_setup(self):
+        missing = []
+        if not self.tmdb.configured():
+            missing.append("TMDB API key")
+        if not self.orion.configured():
+            missing.append("Orion app + user key")
+        if not self.providers():
+            missing.append("at least one debrid service")
+        return missing
+
+    def stream_filter(self):
+        return StreamFilter(bool(self.s.get("filter_cached_only")), self.s.get("filter_resolution"),
+                            self.s.get("filter_audio"), self.s.get("filter_language"))
+
+    # --- catalogue ------------------------------------------------------
+    def rows(self):
+        """Row definitions: [(title, loader)]. Loaders run in a worker thread."""
+        t = self.tmdb
+        rows = []
+        if self.trakt.configured():
+            rows.append(("My watchlist - Movies", lambda: self.watchlist_items("movie")))
+            rows.append(("My watchlist - Series", lambda: self.watchlist_items("show")))
+        rows += [
+            ("Trending movies", lambda: t.trending("movie")),
+            ("Trending series", lambda: t.trending("show")),
+            ("Popular movies", lambda: t.popular("movie")),
+            ("Popular series", lambda: t.popular("show")),
+            ("Top rated movies", lambda: t.top_rated("movie")),
+            ("Top rated series", lambda: t.top_rated("show")),
+        ]
+        return rows
+
+    def genre_rows(self):
+        rows = []
+        for kind, label in (("movie", "Movies"), ("show", "Series")):
+            for genre_id, name in self.tmdb.genres(kind):
+                rows.append(("%s - %s" % (label, name), (lambda k=kind, g=genre_id: self.tmdb.discover(k, g))))
+        return rows
+
+    def watchlist_items(self, kind):
+        entries = self.trakt.watchlist(kind)[:40]
+
+        def enrich(entry):
+            try:
+                item = self.tmdb.by_id(kind, entry["tmdb"])
+                item["imdb"] = item.get("imdb") or entry.get("imdb") or ""
+                return item
+            except Exception:
+                return dict(entry, overview="", rating=0, poster="", backdrop="")
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            return list(pool.map(enrich, entries))
+
+    def load_row(self, loader):
+        items = loader()
+        if self.browse_cached_only:
+            items = items[:18]
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                flags = list(pool.map(self.title_cached, items))
+            items = [i for i, flag in zip(items, flags) if flag]
+        return items
+
+    def title_cached(self, item):
+        """True when at least one cached stream exists (movie, or S01E01 for a series). Cached 12 h."""
+        key = "cached:%s:%s:%s" % (item["kind"], item["tmdb"], ",".join(self.provider_keys()))
+        hit = self.cache.get(key, 12 * 3600)
+        if hit is not None:
+            return bool(hit)
+        try:
+            season, episode = (1, 1) if item["kind"] == "show" else (None, None)
+            streams = self.find_streams(item, season, episode, limit=20)
+            keys = self.provider_keys()
+            flag = any(s.cached_on(keys) for s in streams)
+        except Exception:
+            return False
+        self.cache.set(key, flag)
+        return flag
+
+    def full_item(self, item):
+        """Adds IMDb id, genres and seasons. Returns (item, seasons)."""
+        full, seasons = self.tmdb.details(item["kind"], item["tmdb"])
+        return full, seasons
+
+    # --- streams --------------------------------------------------------
+    def find_streams(self, item, season=None, episode=None, limit=None):
+        provs = self.providers()
+        keys = [p.key for p in provs]
+        imdb = item.get("imdb")
+        if not imdb:
+            imdb = self.tmdb.details(item["kind"], item["tmdb"])[0].get("imdb")
+            item["imdb"] = imdb
+        streams = self.orion.streams(item["kind"], imdb=imdb, tmdb=None if imdb else item["tmdb"],
+                                     season=season, episode=episode, limit=limit)
+        hashes = [s.hash for s in streams if s.hash]
+        if self.s.get("orion_fresh_lookup") and hashes:
+            try:
+                fresh = self.orion.lookup(hashes, keys)
+            except Exception as err:
+                fresh = {}
+                self.log("orionlookup", str(err))
+            for stream in streams:
+                stream.cached.update(fresh.get(stream.hash, {}))
+        for provider in provs:
+            try:
+                known = provider.check_cached(hashes)
+            except ProviderError as err:
+                self.log("cachecheck", provider.key, str(err))
+                continue
+            for stream in streams:
+                if stream.hash in known:
+                    stream.cached[provider.key] = known[stream.hash]
+        return streams
+
+    def play(self, stream, season=None, episode=None, provider_key=None):
+        """Returns (url, provider). Raises NotCached when no configured service has it."""
+        if provider_key:
+            order = [self.provider(provider_key)]
+        else:
+            order = [p for p in self.providers() if stream.cached.get(p.key)]
+        if not order:
+            raise NotCached("Not cached on any of your services")
+        last = None
+        for provider in order:
+            try:
+                return provider.resolve(stream.magnet, season, episode), provider
+            except NotReady as err:
+                stream.cached[provider.key] = False
+                last = err
+            except ProviderError as err:
+                last = err
+        raise last
+
+    def send(self, stream, provider_key):
+        """Starts a cloud download on the chosen service."""
+        return self.provider(provider_key).add(stream.magnet)
+
+    # --- subtitles / posters -------------------------------------------
+    def subtitle_path(self):
+        return os.path.join(self.s.get("cache_dir"), "subs", "current.srt")
+
+    def poster_file(self, path, size="w154"):
+        """Local file for a TMDB poster path; downloads when missing. Returns '' on failure."""
+        if not path:
+            return ""
+        folder = os.path.join(self.s.get("cache_dir"), "posters", size)
+        dest = os.path.join(folder, path.strip("/").replace("/", "_"))
+        if os.path.exists(dest) and os.path.getsize(dest) > 0:
+            return dest
+        try:
+            content = http.request("GET", self.tmdb.image_url(path, size), raw=True, timeout=15)
+            os.makedirs(folder, exist_ok=True)
+            tmp = dest + ".part%d" % (int(time.time() * 1000) % 100000)
+            with open(tmp, "wb") as fh:
+                fh.write(content)
+            os.replace(tmp, dest)
+            return dest
+        except (http.ApiError, IOError, OSError):
+            return ""
+
+    def poster_cached(self, path, size="w154"):
+        if not path:
+            return ""
+        dest = os.path.join(self.s.get("cache_dir"), "posters", size, path.strip("/").replace("/", "_"))
+        return dest if os.path.exists(dest) and os.path.getsize(dest) > 0 else ""
+
+    def test_connections(self):
+        lines = []
+        for provider in providers(self.s, self.log, only_configured=False):
+            if not provider.configured():
+                lines.append("%s: not set" % provider.name)
+                continue
+            try:
+                lines.append("%s: OK - %s" % (provider.name, provider.account()))
+            except Exception as err:
+                lines.append("%s" % err if str(err).startswith(provider.name) else "%s: %s" % (provider.name, err))
+        if self.trakt.configured():
+            try:
+                lines.append("Trakt: OK - %s" % self.trakt.account())
+            except Exception as err:
+                lines.append(str(err))
+        else:
+            lines.append("Trakt: not linked")
+        lines.append("TMDB: %s" % ("key set" if self.tmdb.configured() else "not set"))
+        lines.append("Orion: %s" % ("keys set" if self.orion.configured() else "not set"))
+        return "\n".join(lines)
