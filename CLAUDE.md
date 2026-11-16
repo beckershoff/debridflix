@@ -73,6 +73,11 @@ opens the plugin browser; DebridFlix is the first entry.
 - Cached status: Premiumize + TorBox asked directly. RD / AllDebrid / Debrid-Link removed their
   cache-check endpoints (late 2024), so their flags come from Orion (`stream.access.<service>`),
   optionally refreshed with Orion `mode=debrid action=lookup` ("Orion fresh cache lookup").
+- Without Orion keys (Setup "Stream search" = auto) streams come from the keyless Torrentio API
+  (`core/torrentio.py`). Cache state unknown for RD/AD/DL there -> `None` = "Maybe", Play tries them.
+- Playback is HTTPS-only from the debrid service (`App.play` refuses anything else): the box never does P2P.
+- Enigma2 exec()s non-bound-method entries in `onLayoutFinish`: never append a lambda there.
+- Trakt apps made since Oct 2026 have no client secret; the device flow sends it only if set.
 - Home "cached only" = one Orion search per title (first 18 per row, 12 h disk cache).
 
 ## Known risks - check these first on the box
