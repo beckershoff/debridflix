@@ -8,7 +8,7 @@ from Screens.ChoiceBox import ChoiceBox
 from Screens.InfoBar import MoviePlayer
 from Screens.Screen import Screen
 
-from ..core.i18n import pick_track
+from ..core.i18n import lang_code, pick_track
 from ..core.subtitles import SubtitleTrack
 from .common import Async
 from ..core.i18n import _
@@ -38,12 +38,11 @@ class DebridFlixPlayer(MoviePlayer, Async):
         self.subTimer.callback.append(self.subtitleTick)
         self["debridflixActions"] = ActionMap(["ColorActions"], {"blue": self.subtitleMenu}, -2)
         self.audioTries = 0
+        self.autoDone = False
         self.audioTimer = eTimer()
         self.audioTimer.callback.append(self.chooseAudio)
         self.audioTimer.start(1000)
         self.onClose.append(self.cleanup)
-        if app.s.get("subtitle_auto") and app.subs.configured():
-            self.searchSubtitles(auto=True)
 
     # --- leaving --------------------------------------------------------
     def position(self):
@@ -89,8 +88,10 @@ class DebridFlixPlayer(MoviePlayer, Async):
         if count == 0:
             if self.audioTries >= 15:
                 self.audioTimer.stop()
+                self.autoSubtitles()
             return
         self.audioTimer.stop()
+        self.autoSubtitles()  # the file's tracks are known now, embedded subtitles too
         if count < 2:
             return
         languages = []
@@ -102,25 +103,66 @@ class DebridFlixPlayer(MoviePlayer, Async):
             audio.selectTrack(index)
 
     # --- subtitles ------------------------------------------------------
+    def embeddedSubtitles(self):
+        """Subtitle tracks inside the video file: [(entry, language code)]. Shown by Enigma2 itself."""
+        try:
+            service = self.session.nav.getCurrentService()
+            subtitle = service and service.subtitle()
+            entries = (subtitle and subtitle.getSubtitleList()) or []
+        except Exception:
+            return []
+        return [(entry, lang_code(entry[4] if len(entry) > 4 else "")) for entry in entries]
+
+    def subtitlesOff(self):
+        self.track = None
+        self.subTimer.stop()
+        self.overlay.hide()
+        if getattr(self, "selected_subtitle", None):
+            self.enableSubtitle(None)
+
+    def useEmbedded(self, entry):
+        self.subtitlesOff()
+        self.enableSubtitle(entry)
+
     def subtitleMenu(self):
-        choices = [(_("Search subtitles (%s)") % self.app.s.get("subtitle_languages"), "search")]
+        choices = []
+        for index, (entry, code) in enumerate(self.embeddedSubtitles()):
+            choices.append((_("In the video: %s") % (code.upper() or (_("track %d") % (index + 1))), ("embedded", entry)))
+        choices.append((_("Search subtitles (%s)") % self.app.s.get("subtitle_languages"), ("search", None)))
+        if self.track or getattr(self, "selected_subtitle", None):
+            choices.append((_("Subtitles off"), ("off", None)))
         if self.track:
-            choices += [(_("Subtitles off"), "off"), (_("Show subtitles 0.5 s later"), "later"), (_("Show subtitles 0.5 s earlier"), "earlier")]
+            choices += [(_("Show subtitles 0.5 s later"), ("later", None)), (_("Show subtitles 0.5 s earlier"), ("earlier", None))]
         self.session.openWithCallback(self.subtitleMenuChosen, ChoiceBox, title=_("Subtitles"), list=choices)
 
     def subtitleMenuChosen(self, choice):
         if not choice:
             return
-        if choice[1] == "search":
+        action, value = choice[1]
+        if action == "embedded":
+            self.useEmbedded(value)
+        elif action == "search":
             self.searchSubtitles()
-        elif choice[1] == "off":
-            self.track = None
-            self.subTimer.stop()
-            self.overlay.hide()
+        elif action == "off":
+            self.subtitlesOff()
         elif self.track:
-            self.track.delay_ms += 500 if choice[1] == "later" else -500
+            self.track.delay_ms += 500 if action == "later" else -500
 
-    def searchSubtitles(self, auto=False):
+    def autoSubtitles(self):
+        """'Load best subtitle automatically': first language in subtitle_languages that exists, embedded or online."""
+        if not self.app.s.get("subtitle_auto") or self.autoDone:
+            return
+        self.autoDone = True
+        wanted = self.app.s.list("subtitle_languages")
+        rank = lambda code: wanted.index(code) if code in wanted else len(wanted)
+        embedded = sorted(((rank(code), entry) for entry, code in self.embeddedSubtitles() if code in wanted), key=lambda x: x[0])
+        if embedded and embedded[0][0] == 0:
+            self.useEmbedded(embedded[0][1])  # best possible: first language, no download
+            return
+        self.searchSubtitles(auto=True, beat=embedded[0] if embedded else None)
+
+    def searchSubtitles(self, auto=False, beat=None):
+        """beat: (rank, embedded entry) to fall back on when online has nothing in a better language."""
         def search():
             item = self.item
             if not item.get("imdb"):
@@ -128,22 +170,30 @@ class DebridFlixPlayer(MoviePlayer, Async):
             return self.app.subs.search(item.get("imdb"), self.season, self.episode)
 
         def found(results):
-            if not results:
-                if not auto:
-                    self.showInfo(_("No subtitles found."))
-            elif auto:
-                self.loadSubtitle(results[0])
+            wanted = self.app.s.list("subtitle_languages")
+            if auto:
+                best = results[0] if results else None
+                online_rank = wanted.index(best["language"]) if best and best["language"] in wanted else len(wanted)
+                if beat and beat[0] <= online_rank:
+                    self.useEmbedded(beat[1])
+                elif best:
+                    self.loadSubtitle(best)
+            elif not results:
+                self.showInfo(_("No subtitles found."))
             else:
-                choices = [(_("%s   %s   (%s downloads)") % (r["language"].upper(), r["release"][:70], r["downloads"]), r) for r in results[:40]]
+                label = lambda r: (_("%s   %s   (%s downloads)") % (r["language"].upper(), r["release"][:60], r["downloads"])
+                                   if r.get("source") != "stremio" else "%s   %s   (Stremio)" % (r["language"].upper(), r["release"][:60]))
+                choices = [(label(r), r) for r in results[:40]]
                 self.session.openWithCallback(lambda c: c and self.loadSubtitle(c[1]), ChoiceBox, title=_("Choose a subtitle"), list=choices)
 
-        self.bg(search, found, (lambda e: None) if auto else None)
+        self.bg(search, found, (lambda e: beat and self.useEmbedded(beat[1])) if auto else None)
 
     def loadSubtitle(self, result):
         def download():
-            return SubtitleTrack.from_file(self.app.subs.download(result["file_id"], self.app.subtitle_path()))
+            return SubtitleTrack.from_file(self.app.subs.download(result, self.app.subtitle_path()))
 
         def ready(track):
+            self.subtitlesOff()  # one subtitle source at a time
             self.track = track
             self.lastText = None
             self.overlay.show()

@@ -115,6 +115,8 @@ DE = {
     # --- player ---
     "Subtitles": "Untertitel",
     "Search subtitles (%s)": "Untertitel suchen (%s)",
+    "In the video: %s": "Im Video: %s",
+    "track %d": "Spur %d",
     "Subtitles off": "Untertitel aus",
     "Show subtitles 0.5 s later": "Untertitel 0,5 s später zeigen",
     "Show subtitles 0.5 s earlier": "Untertitel 0,5 s früher zeigen",

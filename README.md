@@ -10,7 +10,7 @@ on its servers and the box streams the finished file over HTTPS.
 - **Streams:** [Orion](https://orionoid.com), or the keyless Torrentio index as a fallback
 - **Debrid services:** Premiumize, Real-Debrid, TorBox, AllDebrid, Debrid-Link
 - **Trakt:** watchlist rows, add/remove with one key, titles marked watched after 80 %
-- **Subtitles:** OpenSubtitles.com, rendered by the plugin itself (no extra plugin needed)
+- **Subtitles:** from the video file itself, OpenSubtitles.com (with a key), or a keyless backup; no extra plugin needed
 - **Phone setup:** scan a QR code on the TV and paste your keys on your phone
 - **Fits your hardware:** hides streams your TV, chip or network can't play well
 - **English and German:** the interface follows the box's menu language (or choose it in Setup);
@@ -25,7 +25,7 @@ or downloading from unlicensed sources is generally unlawful even if you don't u
   (HiSilicon Hi3798MV200) with the MyMetrixLite skin; the skin is drawn for 1920x1080 and scales
   to boxes whose GUI runs at 1280x720.
 - A **TMDB API key** (free) and an account with at least one **debrid service**.
-- Optional: Orion app + user key, Trakt app, OpenSubtitles API key.
+- Optional: Orion app + user key, Trakt app, OpenSubtitles API key (subtitles work without one).
 - Python standard library only; nothing to install with pip on the box.
 
 ## Install
@@ -87,11 +87,28 @@ which follows the box's own menu language. TMDB titles, descriptions and posters
   come first and German second. Release tags such as `GERMAN`, `DL` (German + English) and `ENG`
   are recognised; untagged releases count as English. When a file has several audio tracks, the
   player switches to the first preferred language automatically.
-- **Subtitles** (*Subtitle languages*, default `de,en`): BLUE in the player searches
-  OpenSubtitles and lists German first, English if there is no German. Turn on *Load best subtitle
-  automatically* to have them appear by themselves.
+- **Subtitles** (*Subtitle languages*, default `de,en`): German first, English if there is no German.
+  Turn on *Load best subtitle automatically* to have them appear by themselves.
 
 Other languages can be added as another dictionary next to `core/i18n_de.py`.
+
+## Subtitles
+
+BLUE in the player opens the subtitle menu. It offers, in this order:
+
+1. **Subtitle tracks inside the video file** ("In the video: DE"). Many MKV releases carry them;
+   Enigma2 shows them itself, nothing is downloaded.
+2. **Online subtitles**, German first, then English:
+   - [OpenSubtitles.com](https://www.opensubtitles.com) when you have entered an API key (most
+     choice, 5 downloads a day without an account, more when you also enter username/password);
+   - otherwise, or when OpenSubtitles.com fails or has nothing in your languages, the public
+     OpenSubtitles add-on that Stremio runs (`opensubtitles-v3.strem.io`). It needs no key and
+     returns ready-to-use UTF-8 files, but holds fewer subtitles per language, so German is not
+     always there (English nearly always is).
+
+Online subtitles can be shifted by 0.5 s steps if they are out of sync. With *Load best subtitle
+automatically* on, the player takes the best language available: an embedded German track first,
+then an online German subtitle, then English.
 
 ## Remote control
 
@@ -99,7 +116,7 @@ Other languages can be added as another dictionary next to `core/i18n_de.py`.
 | --- | --- |
 | Home | arrows move, OK details, RED search, GREEN watchlist add/remove, YELLOW only titles with a cached stream, BLUE/MENU setup |
 | Streams | OK play, RED cached only, GREEN resolution, YELLOW audio, BLUE language, MENU send the torrent to a service |
-| Player | BLUE subtitles (search, off, shift timing by 0.5 s) |
+| Player | BLUE subtitles (tracks in the file, online search, off, shift timing by 0.5 s) |
 
 ## How streams are found and played
 

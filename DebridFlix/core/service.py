@@ -12,7 +12,7 @@ from .models import StreamFilter
 from .orion import Orion
 from .torrentio import Torrentio
 from .settings import Settings
-from .subtitles import OpenSubtitles
+from .subtitles import Subtitles
 from .tmdb import Tmdb
 from .trakt import Trakt
 from . import i18n
@@ -33,7 +33,7 @@ class App(object):
         self.orion = Orion(self.s, self.log)
         self.torrentio = Torrentio(self.s, self.log)
         self.trakt = Trakt(self.s, self.log)
-        self.subs = OpenSubtitles(self.s, self.log)
+        self.subs = Subtitles(self.s, self.log)
         self.browse_cached_only = False
         self._detected = None
         self.last_hidden = {}  # reason -> count, from the last find_streams()

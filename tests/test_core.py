@@ -371,8 +371,27 @@ class CoreTest(unittest.TestCase):
         res = self.app.subs.search("tt0063350", 1, 2)
         self.assertEqual([r["file_id"] for r in res], [2, 1])
         self.assertEqual(self.fake.calls[0][2]["parent_imdb_id"], "63350")
-        path = self.app.subs.download(2, self.app.subtitle_path())
+        path = self.app.subs.download(res[0], self.app.subtitle_path())
         self.assertEqual(subtitles.SubtitleTrack.from_file(path).text_at(1500), "Hoi")
+        self.assertFalse(any("strem.io" in c[1] for c in self.fake.calls))  # API had the first language: no backup call
+
+    def test_subtitle_backup_without_key(self):
+        # no OpenSubtitles key: the keyless Stremio add-on, German before English, other languages dropped
+        self.s.update({"os_api_key": "", "subtitle_languages": "de,en"})
+        self.fake.on("GET", "opensubtitles-v3.strem.io/subtitles/series/tt0903747:1:2.json", {"subtitles": [
+            {"url": "https://subs5.strem.io/en/download/a", "lang": "eng", "subtitleFileName": "BB.S01E02.en.srt"},
+            {"url": "https://subs5.strem.io/en/download/b", "lang": "spa"},
+            {"url": "https://subs5.strem.io/en/download/c", "lang": "ger", "subtitleFileName": "BB.S01E02.de.srt"}]})
+        self.fake.on("GET", "subs5.strem.io/en/download/c", "1\r\n00:00:05,590 --> 00:00:07,799\r\nBisher bei \"Breaking Bad\".\r\n".encode("utf-8"))
+        self.assertTrue(self.app.subs.configured())
+        res = self.app.subs.search("tt0903747", 1, 2)
+        self.assertEqual([(r["language"], r["source"]) for r in res], [("de", "stremio"), ("en", "stremio")])
+        path = self.app.subs.download(res[0], self.app.subtitle_path())
+        self.assertEqual(subtitles.SubtitleTrack.from_file(path).text_at(6000), 'Bisher bei "Breaking Bad".')
+        # with a key that fails (quota, outage): still the backup
+        self.s.set("os_api_key", "k")
+        self.fake.on("GET", "api.opensubtitles.com", http.ApiError("down", 503))
+        self.assertEqual(self.app.subs.search("tt0903747", 1, 2)[0]["source"], "stremio")
 
     def test_settings_roundtrip(self):
         self.s.set("pm_key", "zzz")

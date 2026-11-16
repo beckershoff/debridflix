@@ -1,10 +1,14 @@
-"""OpenSubtitles.com download plus a small SRT parser for the on-screen overlay."""
+"""Subtitles: OpenSubtitles.com (API key) with a keyless backup, plus a small SRT parser for the overlay.
+
+Backup: the public OpenSubtitles add-on that Stremio runs (opensubtitles-v3.strem.io). No key, returns
+direct SRT links already converted to UTF-8, but holds fewer subtitles per language than the real API.
+"""
 import bisect
 import os
 import re
 
 from . import http
-from .i18n import _
+from .i18n import _, lang_code
 
 BASE = "https://api.opensubtitles.com/api/v1"
 AGENT = "DebridFlix v0.1.0"
@@ -59,7 +63,8 @@ class OpenSubtitles(object):
             attr = entry.get("attributes") or {}
             files = attr.get("files") or []
             if files and files[0].get("file_id"):
-                out.append({"file_id": files[0]["file_id"], "language": attr.get("language") or "?",
+                out.append({"source": "opensubtitles", "file_id": files[0]["file_id"],
+                            "language": lang_code(attr.get("language")) or attr.get("language") or "?",
                             "release": attr.get("release") or files[0].get("file_name") or "",
                             "downloads": attr.get("download_count") or 0})
         wanted = self.s.list("subtitle_languages")
@@ -79,6 +84,87 @@ class OpenSubtitles(object):
         with open(dest, "wb") as fh:
             fh.write(content)
         return dest
+
+
+STREMIO = "https://opensubtitles-v3.strem.io"
+BROWSER = {"User-Agent": "Mozilla/5.0 (Enigma2; DebridFlix)"}
+
+
+class StremioSubtitles(object):
+    """Keyless backup source."""
+    name = "OpenSubtitles (Stremio)"
+
+    def __init__(self, settings, log=None):
+        self.s = settings
+        self.log = log or (lambda *a: None)
+
+    def search(self, imdb, season=None, episode=None, languages=None):
+        imdb = str(imdb or "")
+        if not imdb:
+            raise SubtitleError(_("No IMDb id for this title"))
+        imdb = imdb if imdb.startswith("tt") else "tt" + imdb
+        path = "/subtitles/movie/%s.json" % imdb if season is None or episode is None else \
+            "/subtitles/series/%s:%s:%s.json" % (imdb, season, episode)
+        try:
+            reply = http.request("GET", STREMIO + path, headers=BROWSER, timeout=30)
+        except http.ApiError as err:
+            raise SubtitleError("OpenSubtitles (Stremio): %s" % err)
+        wanted = languages or self.s.list("subtitle_languages")
+        out = []
+        for entry in (reply or {}).get("subtitles") or []:
+            code = lang_code(entry.get("lang"))
+            if entry.get("url") and code in wanted:
+                out.append({"source": "stremio", "url": entry["url"], "language": code,
+                            "release": entry.get("subtitleFileName") or entry.get("movieReleaseName") or "", "downloads": 0})
+        self.log("stremiosubs", path, "%d in %s" % (len(out), ",".join(wanted)))
+        return out
+
+    def download(self, url, dest):
+        try:
+            content = http.request("GET", url, raw=True, headers=BROWSER, timeout=30)
+        except http.ApiError as err:
+            raise SubtitleError("OpenSubtitles (Stremio): %s" % err)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as fh:
+            fh.write(content)
+        return dest
+
+
+class Subtitles(object):
+    """What the player uses: OpenSubtitles.com when a key is set, the keyless source as backup
+    (no key, an error, or nothing in the wanted languages). Results sorted by subtitle_languages."""
+
+    def __init__(self, settings, log=None):
+        self.s = settings
+        self.log = log or (lambda *a: None)
+        self.api = OpenSubtitles(settings, log)
+        self.backup = StremioSubtitles(settings, log)
+
+    def configured(self):
+        return True  # the backup needs no key
+
+    def search(self, imdb, season=None, episode=None):
+        wanted = self.s.list("subtitle_languages")
+        results, errors = [], []
+        if self.api.configured():
+            try:
+                results = self.api.search(imdb, season, episode, wanted)
+            except SubtitleError as err:
+                errors.append(err)
+        if not any(r["language"] in wanted for r in results):
+            try:
+                results += self.backup.search(imdb, season, episode, wanted)
+            except SubtitleError as err:
+                errors.append(err)
+        if not results and errors:
+            raise errors[0]
+        results.sort(key=lambda e: (wanted.index(e["language"]) if e["language"] in wanted else 99, -e["downloads"]))
+        return results
+
+    def download(self, result, dest):
+        if result.get("source") == "stremio":
+            return self.backup.download(result["url"], dest)
+        return self.api.download(result["file_id"], dest)
 
 
 _TIME = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")

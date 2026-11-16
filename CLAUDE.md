@@ -12,7 +12,7 @@ stream is not cached. Version 0.2.0. Standard library only - no pip packages on 
 - **Every `<screen>` needs `resolution="1920,1080"`**, otherwise OpenATV scales the skin 1.5x as if it were 720p
   (`common.screen()` and the player overlay set it).
 - First start with setup missing opens the pairing (QR) screen automatically.
-- 28 tests pass: `python3 -m unittest tests.test_core tests.test_ui_smoke`
+- 30 tests pass: `python3 -m unittest tests.test_core tests.test_ui_smoke`
   - `test_core`: service logic against a fake `http.request`.
   - `test_ui_smoke`: screens against stand-in Enigma2 classes (checks our logic, not Enigma2).
     The pairing test needs `opencv-python` + `numpy` to decode the QR code.
@@ -83,6 +83,10 @@ opens the plugin browser; DebridFlix is the first entry.
   Translate module-level tables at render time, never at import. Rows use flags (`watchlist`, `search`), not titles.
 - Audio pref `en,de` (sort + player picks track via `pick_track`), subtitles `de,en`. "DL" tag = German+English,
   but not "WEB-DL". Verified on box: 6-track file (RU/UK/EN) switched to EN.
+- Subtitles: `core/subtitles.Subtitles` = OpenSubtitles.com (key) + keyless backup `StremioSubtitles`
+  (opensubtitles-v3.strem.io, used when no key / error / nothing in wanted langs; fewer DE subs). Player also lists
+  embedded tracks via MoviePlayer `enableSubtitle()` (InfoBarSubtitleSupport). Podnapisi offline since 2026,
+  SubDL/SubSource need keys. Embedded tracks not yet verified on the box (needs playback).
 - Settings file stores only non-default values; `LEGACY_DEFAULTS` drops old written-out defaults on load.
 - Pairing test needs opencv: `python3 -m venv /tmp/v && /tmp/v/bin/pip install opencv-python-headless numpy`.
 - Playback is HTTPS-only from the debrid service (`App.play` refuses anything else): the box never does P2P.

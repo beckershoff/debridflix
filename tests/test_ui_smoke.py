@@ -52,7 +52,8 @@ def mod(name, **attrs):
 class Cfg(object):
     def __init__(self, default=None, **k): self.value = default
 class MoviePlayer(Screen):
-    def __init__(self, session, service): Screen.__init__(self, session); self.service = service
+    def __init__(self, session, service): Screen.__init__(self, session); self.service = service; self.selected_subtitle = None; self.enabled = []
+    def enableSubtitle(self, sub): self.selected_subtitle = sub; self.enabled.append(sub)  # InfoBarSubtitleSupport
 class SRef(object):
     def __init__(self, t, f, path): self.type, self.path = t, path
     def setName(self, n): self.name = n
@@ -197,6 +198,32 @@ class UiSmoke(unittest.TestCase):
             self.assertEqual(chosen, [1])
         finally:
             i18n.set_language("en")
+
+    def test_player_embedded_subtitles(self):
+        from DebridFlix.ui.player import DebridFlixPlayer
+        self.app.s.update({"subtitle_languages": "de,en", "subtitle_auto": True})
+        de, en = (2, 3, 0, 0, "deu"), (2, 4, 0, 0, "eng")
+        audio = types.SimpleNamespace(getNumberOfTracks=lambda: 1)
+        sub = types.SimpleNamespace(getSubtitleList=lambda: [en, de])
+        service = types.SimpleNamespace(audioTracks=lambda: audio, subtitle=lambda: sub)
+        self.session.nav = types.SimpleNamespace(getCurrentService=lambda: service)
+        item = {"kind": "show", "tmdb": 50, "imdb": "tt50", "title": "Show"}
+        player = self.session.open(DebridFlixPlayer, SRef(4097, 0, "https://x"), self.app, item, 1, 2)
+        before = len(self.fake.calls)
+        player.chooseAudio()  # tracks known -> automatic subtitles
+        self.assertEqual(player.enabled, [de])  # embedded German: first language, no download
+        self.assertFalse([c for c in self.fake.calls[before:] if "subtitles" in c[1]])
+        self.session.answers = [lambda k: k["list"][0]]; player.subtitleMenu()
+        self.assertEqual([c[0] for c in Session.dialogs[-1][2]["list"]][:2], ["In the video: EN", "In the video: DE"])
+        self.assertEqual(player.enabled[-1], en)
+        # only English embedded, German online -> the online German subtitle wins
+        sub.getSubtitleList = lambda: [en]
+        self.fake.routes[:0] = [("GET", "strem.io/subtitles", {"subtitles": [{"url": "https://subs5.strem.io/de", "lang": "ger"}]}),
+                                ("GET", "subs5.strem.io/de", b"1\n00:00:01,000 --> 00:00:03,000\nHallo\n")]  # before setUp's /subtitles
+        self.app.s.set("os_api_key", "")
+        player2 = self.session.open(DebridFlixPlayer, SRef(4097, 0, "https://x"), self.app, item, 1, 2)
+        player2.chooseAudio()
+        self.assertEqual(player2.track.text_at(2000), "Hallo"); self.assertEqual(player2.enabled, [])
 
     def test_setup(self):
         from DebridFlix.ui.setup import SetupScreen, DeviceAuthScreen
