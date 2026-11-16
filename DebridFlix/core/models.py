@@ -82,6 +82,10 @@ class Stream(object):
     def cached_on(self, keys):
         return [k for k in keys if self.cached.get(k)]
 
+    def maybe_on(self, keys):
+        """Services whose cache state is unknown (no Orion data, no direct check): Play will try them."""
+        return [k for k in keys if k in self.cached and self.cached[k] is None]
+
 
 def parse_orion_stream(raw):
     """Turn one Orion stream object into a Stream. Returns None for non-torrent links."""
@@ -131,7 +135,7 @@ class StreamFilter(object):
         self.language = language
 
     def match(self, stream, provider_keys):
-        if self.cached_only and not stream.cached_on(provider_keys):
+        if self.cached_only and not (stream.cached_on(provider_keys) or stream.maybe_on(provider_keys)):
             return False
         if self.resolution != "any" and stream.quality != self.resolution:
             return False
@@ -143,7 +147,9 @@ class StreamFilter(object):
 
     def apply(self, streams, provider_keys):
         result = [s for s in streams if self.match(s, provider_keys)]
-        result.sort(key=lambda s: (bool(s.cached_on(provider_keys)), s.rank, float(s.size or 0)), reverse=True)
+        # cached anywhere first, then "maybe" (unknown cache state), then the rest; within a tier best quality first
+        result.sort(key=lambda s: (2 if s.cached_on(provider_keys) else 1 if s.maybe_on(provider_keys) else 0, s.rank,
+                                   float(s.seeds or 0) > 0, float(s.size or 0)), reverse=True)
         return result
 
 

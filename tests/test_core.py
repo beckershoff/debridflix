@@ -87,9 +87,9 @@ class CoreTest(unittest.TestCase):
         self.s.update({"pm_key": "p"})
         s = models.Stream(hash=H1, magnet="magnet:?xt=urn:btih:" + H1, cached={"premiumize": True})
         self.fake.on("POST", "/transfer/directdl", {"status": "success", "content": [
-            {"path": "M/sample.mkv", "size": 1, "link": "http://x/s"}, {"path": "M/movie.mkv", "size": 100, "link": "http://x/m"}]})
+            {"path": "M/sample.mkv", "size": 1, "link": "https://x/s"}, {"path": "M/movie.mkv", "size": 100, "link": "https://x/m"}]})
         url, prov = self.app.play(s)
-        self.assertEqual((url, prov.key), ("http://x/m", "premiumize"))
+        self.assertEqual((url, prov.key), ("https://x/m", "premiumize"))
         with self.assertRaises(NotCached):
             self.app.play(models.Stream(hash=H2, magnet="m", cached={"premiumize": False}))
 
@@ -170,6 +170,50 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(self.fake.calls[-1][4], {"refresh_token": "ref", "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
                                                   "grant_type": "refresh_token", "client_id": "c"})
         self.assertEqual(self.s.get("trakt_access"), "acc2")
+
+    def test_torrentio_fallback_maybe_and_https_only(self):
+        # no Orion keys -> auto uses Torrentio; RD has no cache check -> "maybe", and Play tries it
+        self.s.update({"orion_app_key": "", "orion_user_key": "", "rd_token": "r"})
+        self.assertEqual(self.app.missing_setup(), [])
+        self.assertIs(self.app.stream_source(), self.app.torrentio)
+        self.fake.on("GET", "torrentio.strem.fun/stream/movie/tt0063350.json", {"streams": [
+            {"name": "Torrentio\n4k HDR", "title": "Movie 1994 2160p BluRay x265 DDP5.1\n\U0001f464 100 \U0001f4be 6.91 GB \u2699\ufe0f YTS\n\U0001f1ec\U0001f1e7 / \U0001f1f3\U0001f1f1",
+             "infoHash": H1.upper(), "fileIdx": 0, "behaviorHints": {"filename": "Movie.2160p.mkv"}},
+            {"name": "Torrentio\n1080p", "title": "Movie.1994.1080p.WEB.h264\n\U0001f464 0 \U0001f4be 900 MB \u2699\ufe0f 1337x",
+             "infoHash": H2, "fileIdx": 1},
+            {"name": "Torrentio\nhoster", "title": "no hash"}]})
+        streams = self.app.find_streams(self.item)
+        self.assertEqual([s.hash for s in streams], [H1, H2])
+        a, b = streams
+        self.assertEqual((a.quality, a.seeds, a.size, a.source, a.languages, a.video_codec, a.channels, a.audio_codec),
+                         ("hd4k", 100, 6.91e9, "YTS", ["en", "nl"], "h265", 6, "eac3"))
+        self.assertEqual((b.quality, b.size, b.video_codec), ("hd1080", 9e8, "h264"))
+        self.assertTrue(a.magnet.startswith("magnet:?xt=urn:btih:" + H1))
+        keys = self.app.provider_keys()
+        self.assertEqual(a.maybe_on(keys), ["realdebrid"])
+        self.assertEqual(len(models.StreamFilter(True, "any", "any", "any").apply(streams, keys)), 2)  # cached-only keeps "maybe"
+        # Play: RD resolves to an https link -> played; a plain http link would be refused
+        from unittest import mock
+        from DebridFlix.core.debrid import RealDebrid
+        with mock.patch.object(RealDebrid, "resolve", lambda self, magnet, s=None, e=None: "https://rd/file.mkv"):
+            url, prov = self.app.play(a)
+            self.assertEqual((url, prov.key), ("https://rd/file.mkv", "realdebrid"))
+        for bad in ("http://rd/file.mkv", a.magnet):
+            with mock.patch.object(RealDebrid, "resolve", lambda self, magnet, s=None, e=None, bad=bad: bad):
+                with self.assertRaises(ProviderError):
+                    self.app.play(a)
+
+    def test_torrentio_balance_and_series_path(self):
+        from DebridFlix.core import torrentio
+        mk = lambda q, i: models.Stream(hash="%040d" % i, quality=q)
+        out = torrentio.balance([mk("hd4k", i) for i in range(5)] + [mk("hd1080", 10 + i) for i in range(3)] + [mk("hd720", 20)], 4)
+        self.assertEqual([s.quality for s in out], ["hd4k", "hd1080", "hd720", "hd4k"])
+        self.fake.on("GET", "torrentio.strem.fun", {"streams": []})
+        self.assertEqual(torrentio.Torrentio(self.s).streams("show", "tt0903747", 1, 2), [])
+        self.assertIn("/stream/series/tt0903747:1:2.json", self.fake.calls[-1][1])
+        self.s.set("stream_source", "orion")
+        self.s.update({"orion_app_key": "", "orion_user_key": ""})
+        self.assertTrue(any("Orion" in m for m in self.app.missing_setup()))
 
     def test_tmdb_and_cached_browse(self):
         self.s.update({"pm_key": "p"})

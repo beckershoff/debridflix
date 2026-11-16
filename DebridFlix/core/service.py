@@ -9,6 +9,7 @@ from .cache import DiskCache
 from .debrid import NotReady, ProviderError, providers
 from .models import StreamFilter
 from .orion import Orion
+from .torrentio import Torrentio
 from .settings import Settings
 from .subtitles import OpenSubtitles
 from .tmdb import Tmdb
@@ -27,6 +28,7 @@ class App(object):
         self.cache = DiskCache(os.path.join(self.s.get("cache_dir"), "data"))
         self.tmdb = Tmdb(self.s, self.cache)
         self.orion = Orion(self.s, self.log)
+        self.torrentio = Torrentio(self.s, self.log)
         self.trakt = Trakt(self.s, self.log)
         self.subs = OpenSubtitles(self.s, self.log)
         self.browse_cached_only = False
@@ -58,8 +60,8 @@ class App(object):
         missing = []
         if not self.tmdb.configured():
             missing.append("TMDB API key")
-        if not self.orion.configured():
-            missing.append("Orion app + user key")
+        if self.s.get("stream_source") == "orion" and not self.orion.configured():
+            missing.append("Orion app + user key (or set Stream search to auto)")
         if not self.providers():
             missing.append("at least one debrid service")
         return missing
@@ -145,10 +147,14 @@ class App(object):
         if not imdb:
             imdb = self.tmdb.details(item["kind"], item["tmdb"])[0].get("imdb")
             item["imdb"] = imdb
-        streams = self.orion.streams(item["kind"], imdb=imdb, tmdb=None if imdb else item["tmdb"],
-                                     season=season, episode=episode, limit=limit)
+        source = self.stream_source()
+        if source is self.orion:
+            streams = self.orion.streams(item["kind"], imdb=imdb, tmdb=None if imdb else item["tmdb"],
+                                         season=season, episode=episode, limit=limit)
+        else:
+            streams = self.torrentio.streams(item["kind"], imdb=imdb, season=season, episode=episode, limit=limit)
         hashes = [s.hash for s in streams if s.hash]
-        if self.s.get("orion_fresh_lookup") and hashes:
+        if source is self.orion and self.s.get("orion_fresh_lookup") and hashes:
             try:
                 fresh = self.orion.lookup(hashes, keys)
             except Exception as err:
@@ -165,7 +171,17 @@ class App(object):
             for stream in streams:
                 if stream.hash in known:
                     stream.cached[provider.key] = known[stream.hash]
+        for stream in streams:  # no answer from Orion or the service: None = unknown, Play will try it
+            for key in keys:
+                stream.cached.setdefault(key, None)
         return streams
+
+    def stream_source(self):
+        """Orion when chosen or (auto) when its keys are set, else the keyless Torrentio search."""
+        choice = self.s.get("stream_source") or "auto"
+        if choice == "orion" or (choice == "auto" and self.orion.configured()):
+            return self.orion
+        return self.torrentio
 
     def play(self, stream, season=None, episode=None, provider_key=None):
         """Returns (url, provider). Raises NotCached when no configured service has it."""
@@ -173,12 +189,17 @@ class App(object):
             order = [self.provider(provider_key)]
         else:
             order = [p for p in self.providers() if stream.cached.get(p.key)]
+            order += [p for p in self.providers() if p.key in stream.cached and stream.cached[p.key] is None]
         if not order:
             raise NotCached("Not cached on any of your services")
         last = None
         for provider in order:
             try:
-                return provider.resolve(stream.magnet, season, episode), provider
+                url = provider.resolve(stream.magnet, season, episode)
+                # only ever play the service's own HTTPS download: never a magnet / P2P, always encrypted
+                if not str(url or "").lower().startswith("https://"):
+                    raise ProviderError("%s returned a non-HTTPS link; refusing to play it" % provider.name)
+                return url, provider
             except NotReady as err:
                 stream.cached[provider.key] = False
                 last = err

@@ -11,6 +11,8 @@ class OrionError(Exception):
 
 
 class Orion(object):
+    name = "Orion"
+
     def __init__(self, settings, log=None):
         self.s = settings
         self.log = log or (lambda *a: None)

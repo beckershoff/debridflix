@@ -34,7 +34,9 @@ class Session(object):
             if cb and cls.__name__ != "MessageBox": cb(self.answers.pop(0)(k) if self.answers else None)
             return None
         dlg = cls(self, *a, **k); dlg._cb = cb; self.stack.append(dlg)
-        for f in dlg.onLayoutFinish: f()
+        for f in dlg.onLayoutFinish:  # like Enigma2: anything that is not a bound method of the screen is exec()'d
+            if getattr(f, "__self__", None) is not dlg: raise TypeError("exec() arg 1 must be a string, bytes or code object")
+            f()
         return dlg
     def instantiateDialog(self, cls, *a): return cls(self, *a)
     def deleteDialog(self, d): pass

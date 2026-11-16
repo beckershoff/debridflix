@@ -83,7 +83,13 @@ class StreamsScreen(Screen, Async):
         entries = []
         for s in shown:
             on = s.cached_on(keys)
-            badge = "Cached: " + " ".join(shorts[k] for k in on) if on else "Not cached"
+            maybe = s.maybe_on(keys)
+            if on:
+                badge, color = "Cached: " + " ".join(shorts[k] for k in on), 0x46D369
+            elif maybe:
+                badge, color = "Maybe: " + " ".join(shorts[k] for k in maybe), 0xE5A00D
+            else:
+                badge, color = "Not cached", 0x888888
             audio = channels_label(s.channels) + (" " + s.audio_codec.upper() if s.audio_codec else "")
             extra = "   ".join(x for x in (s.video_codec.upper(), "%s seeds" % s.seeds if s.seeds else "", s.source) if x)
             entries.append([s,
@@ -92,12 +98,13 @@ class StreamsScreen(Screen, Async):
                             _text(330, 250, audio),
                             _text(590, 330, " ".join(l.upper() for l in s.languages[:6]) or "-"),
                             _text(930, 520, extra, 0xAAAAAA, 1),
-                            _text(1460, 310, badge, 0x46D369 if on else 0x888888, align=RT_HALIGN_RIGHT),
+                            _text(1460, 310, badge, color, align=RT_HALIGN_RIGHT),
                             _text(15, 1760, s.name, 0xAAAAAA, 1, 46, 30)])
         self["list"].setList(entries)
         cached_total = len([s for s in self.streams if s.cached_on(keys)])
-        self["status"].setText("%d of %d streams shown   |   %d cached on your services%s" % (
-            len(shown), len(self.streams), cached_total, "" if providers else "   |   no debrid service configured"))
+        self["status"].setText("%s: %d of %d streams shown   |   %d cached on your services%s" % (
+            self.app.stream_source().name, len(shown), len(self.streams), cached_total,
+            "" if providers else "   |   no debrid service configured"))
         self.updateKeys()
 
     def updateKeys(self):

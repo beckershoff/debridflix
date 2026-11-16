@@ -9,6 +9,7 @@ DEFAULTS = {
     "tmdb_key": "",
     "tmdb_language": "en-US",
     # Orion
+    "stream_source": "auto",  # auto = Orion when its keys are set, else Torrentio
     "orion_app_key": "",
     "orion_user_key": "",
     "orion_limit": "50",
@@ -43,9 +44,10 @@ DEFAULTS = {
 SETUP_FIELDS = [
     ("TMDB API key (v3)", "tmdb_key", "text", None),
     ("Metadata language", "tmdb_language", "choice", ["en-US", "nl-NL", "de-DE", "fr-FR", "es-ES", "it-IT", "tr-TR", "sv-SE"]),
+    ("Stream search (auto = Orion if keys set, else Torrentio)", "stream_source", "choice", ["auto", "orion", "torrentio"]),
     ("Orion app key", "orion_app_key", "text", None),
     ("Orion user key", "orion_user_key", "text", None),
-    ("Orion results per search", "orion_limit", "choice", ["20", "50", "100", "200"]),
+    ("Results per search", "orion_limit", "choice", ["20", "50", "100", "200"]),
     ("Orion fresh cache lookup (uses quota)", "orion_fresh_lookup", "bool", None),
     ("Premiumize API key", "pm_key", "text", None),
     ("Real-Debrid API token (or link with yellow)", "rd_token", "text", None),

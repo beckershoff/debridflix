@@ -137,8 +137,12 @@ class DeviceAuthScreen(Screen, Async):
         self["actions"] = ActionMap(["OkCancelActions"], {"cancel": self.close, "ok": self.close}, -1)
         self.timer = eTimer()
         self.timer.callback.append(self.poll)
-        self.onLayoutFinish.append(lambda: self.bg(self.target.auth_start, self.started, self.failed))
+        # Enigma2 exec()s anything in onLayoutFinish that is not a bound method of the screen: no lambdas here
+        self.onLayoutFinish.append(self.start)
         self.onClose.append(self.timer.stop)
+
+    def start(self):
+        self.bg(self.target.auth_start, self.started, self.failed)
 
     def started(self, state):
         self.state = state
