@@ -17,7 +17,15 @@ class Trakt(object):
         self._ids = None  # {"movie": set(tmdb ids), "show": set(tmdb ids)}
 
     def has_app(self):
-        return bool(self.s.get("trakt_client_id") and self.s.get("trakt_client_secret"))
+        # Trakt apps created since Oct 2026 get no client secret (PKCE-only); the device flow works with the ID alone
+        return bool(self.s.get("trakt_client_id"))
+
+    def _client(self, body):
+        """Adds client_id, and client_secret only for older apps that still have one."""
+        body["client_id"] = self.s.get("trakt_client_id")
+        if self.s.get("trakt_client_secret"):
+            body["client_secret"] = self.s.get("trakt_client_secret")
+        return body
 
     def configured(self):
         return bool(self.has_app() and self.s.get("trakt_access"))
@@ -44,10 +52,9 @@ class Trakt(object):
 
     def _refresh(self):
         try:
-            reply = http.request("POST", BASE + "/oauth/token", json_body={
-                "refresh_token": self.s.get("trakt_refresh"), "client_id": self.s.get("trakt_client_id"),
-                "client_secret": self.s.get("trakt_client_secret"), "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
-                "grant_type": "refresh_token"})
+            reply = http.request("POST", BASE + "/oauth/token", json_body=self._client({
+                "refresh_token": self.s.get("trakt_refresh"), "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+                "grant_type": "refresh_token"}))
             self._store(reply)
         except (http.ApiError, KeyError):
             pass
@@ -55,7 +62,7 @@ class Trakt(object):
     # --- device linking -------------------------------------------------
     def auth_start(self):
         if not self.has_app():
-            raise TraktError("Enter the Trakt client ID and secret first")
+            raise TraktError("Enter the Trakt client ID first")
         reply = self._call("POST", "/oauth/device/code", {"client_id": self.s.get("trakt_client_id")}, auth=False)
         return {"url": reply.get("verification_url") or "https://trakt.tv/activate", "code": reply["user_code"],
                 "interval": int(reply.get("interval") or 5), "expires": int(reply.get("expires_in") or 600),
@@ -63,9 +70,8 @@ class Trakt(object):
 
     def auth_poll(self, state):
         try:
-            reply = http.request("POST", BASE + "/oauth/device/token", headers=self._headers(False), json_body={
-                "code": state["device_code"], "client_id": self.s.get("trakt_client_id"),
-                "client_secret": self.s.get("trakt_client_secret")})
+            reply = http.request("POST", BASE + "/oauth/device/token", headers=self._headers(False), json_body=self._client({
+                "code": state["device_code"]}))
         except http.ApiError as err:
             if err.status in (400, 429):
                 return False  # pending / slow down

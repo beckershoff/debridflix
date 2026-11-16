@@ -29,14 +29,14 @@ Python standard library only, no extra packages.
 | TorBox | torbox.app/settings | `tb_key` |
 | AllDebrid | Setup > YELLOW > Link, or alldebrid.com/apikeys | `ad_key` |
 | Debrid-Link | debrid-link.com/webapp/apikey | `dl_key` |
-| Trakt | trakt.tv/oauth/applications (redirect `urn:ietf:wg:oauth:2.0:oob`), then Setup > YELLOW > Link | `trakt_client_id`, `trakt_client_secret` |
+| Trakt | trakt.tv/oauth/applications (redirect `urn:ietf:wg:oauth:2.0:oob`), then Setup > YELLOW > Link | `trakt_client_id` (`trakt_client_secret` only for apps made before Oct 2026; new apps get none) |
 | OpenSubtitles | opensubtitles.com > API consumers | `os_api_key` (+ username/password) |
 
 ## Pair with your phone (easiest)
 
 BLUE (Setup) > YELLOW > "Set up from your phone". The TV shows a QR code; scan it with a phone
 on the same network. The page lets you paste keys and tap Link for Real-Debrid, AllDebrid and
-Trakt (for Trakt, save the client ID and secret first). The page is served by the box on port
+Trakt (for Trakt, save the client ID first). The page is served by the box on port
 8765, over plain HTTP on your LAN, only while that screen is open, behind a random address
 that changes every time.
 

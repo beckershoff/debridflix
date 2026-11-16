@@ -54,7 +54,7 @@ SETUP_FIELDS = [
     ("Debrid-Link API key", "dl_key", "text", None),
     ("Service priority", "provider_priority", "text", None),
     ("Trakt client ID", "trakt_client_id", "text", None),
-    ("Trakt client secret", "trakt_client_secret", "text", None),
+    ("Trakt client secret (older apps only, else empty)", "trakt_client_secret", "text", None),
     ("OpenSubtitles API key", "os_api_key", "text", None),
     ("OpenSubtitles username", "os_username", "text", None),
     ("OpenSubtitles password", "os_password", "text", None),

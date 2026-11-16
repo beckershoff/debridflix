@@ -152,6 +152,25 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(self.fake.calls[-1][4]["shows"][0]["seasons"], [{"number": 2, "episodes": [{"number": 5}]}])
         self.assertEqual(self.fake.calls[-1][5]["Authorization"], "Bearer tok")
 
+    def test_trakt_link_without_secret(self):
+        # Trakt apps created since Oct 2026 have only a client ID (PKCE); device login must not need a secret
+        self.s.update({"trakt_client_id": "c"})
+        t = self.app.trakt
+        self.assertTrue(t.has_app())
+        self.fake.on("POST", "/oauth/device/code", {"device_code": "dev", "user_code": "ABCD1234",
+                                                     "verification_url": "https://trakt.tv/activate", "interval": 5, "expires_in": 600})
+        self.fake.on("POST", "/oauth/device/token", {"access_token": "acc", "refresh_token": "ref", "created_at": 1, "expires_in": 10})
+        self.fake.on("POST", "/oauth/token", {"access_token": "acc2", "refresh_token": "ref2", "created_at": 9e9, "expires_in": 10})
+        state = t.auth_start()
+        self.assertEqual(state["code"], "ABCD1234")
+        self.assertTrue(t.auth_poll(state))
+        self.assertEqual(self.fake.calls[-1][4], {"code": "dev", "client_id": "c"})
+        self.assertTrue(t.configured())
+        t._headers()  # token expired -> refresh, still without a secret
+        self.assertEqual(self.fake.calls[-1][4], {"refresh_token": "ref", "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+                                                  "grant_type": "refresh_token", "client_id": "c"})
+        self.assertEqual(self.s.get("trakt_access"), "acc2")
+
     def test_tmdb_and_cached_browse(self):
         self.s.update({"pm_key": "p"})
         self.fake.on("GET", "/trending/movie/week", {"results": [{"id": 1, "title": "One", "release_date": "2020-01-01", "poster_path": "/a.jpg"},
